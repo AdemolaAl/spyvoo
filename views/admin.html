@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A1638">
+<meta name="robots" content="noindex">
+<title>Spyvoo · Control room</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/admin.css">
+<script>try{var t=localStorage.getItem('sv-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<div id="app" class="app adm">
+  <aside class="side" id="side" aria-label="Admin menu"></aside>
+  <div class="main">
+    <header class="top" id="top"></header>
+    <nav class="adm-tabs" id="admTabs" aria-label="Admin menu"></nav>
+    <main class="view" id="view" tabindex="-1"><div class="boot"><div class="boot-eyes"></div></div></main>
+  </div>
+</div>
+<div id="layer"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<canvas id="confetti" aria-hidden="true"></canvas>
+<script src="/js/app/core.js"></script>
+<script src="/js/app/art.js"></script>
+<script src="/js/app/glyphs.js"></script>
+<script src="/js/admin/admin.js"></script>
+<script src="/js/admin/pages.js"></script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Spyvoo pricing · Plans from $0</title>
+<meta name="description" content="Spyvoo plans: Free forever, Starter, Pro and Agency. Pay with USDT or Bitcoin. Cancel anytime.">
+<link rel="canonical" href="{{APP_URL}}/pricing">
+<meta property="og:image" content="{{APP_URL}}/img/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Manrope:wght@500;600;700;800&display=swap">
+<link rel="stylesheet" href="/css/page.css">
+</head>
+<body>
+<header class="pg-top"><a class="pg-brand" href="/"><span class="pg-mark"><svg viewBox="0 0 64 64"><rect x="26" y="27" width="12" height="7" rx="3" fill="#fff" opacity=".9"/><circle cx="20" cy="33" r="12" fill="#fff"/><circle cx="44" cy="33" r="12" fill="#fff"/><circle cx="21.5" cy="33" r="5.4" fill="#0A1638"/><circle cx="45.5" cy="33" r="5.4" fill="#0A1638"/></svg></span><span>Spy<b>voo</b></span></a><nav><a href="/#winners">Winning ads</a><a href="/#how">How it works</a><a href="/#features">Features</a></nav><span><a class="btn ghost" href="/login">Log in</a><a class="btn" href="/signup">Start free</a></span></header>
+<main class="pg-main wide">
+  <div class="pr-head"><span class="tag">Pricing</span><h1>Cheaper than one dead ad set.</h1><p class="muted" id="offerLine">Free forever plan. Upgrade when you’re ready. Pay with USDT or Bitcoin.</p>
+    <div class="pr-toggle"><button type="button" class="on" data-y="0">Monthly</button><button type="button" data-y="1">Yearly · 2 months free</button></div></div>
+  <div class="pr-grid" id="grid"></div>
+  <div class="cmp-wrap"><table class="cmp-t" id="cmp"></table></div>
+  <div class="pg-card center" style="margin-top:40px"><h2 style="margin:0">Questions about plans?</h2><p>Write to <b>billing@spyvoo.com</b>. A real person answers.</p><a class="btn grad" href="/signup">Start free, no card</a></div>
+</main>
+<footer class="pg-foot">© Zedapex Limited · <a href="/legal/terms">Terms</a> · <a href="/legal/privacy">Privacy</a> · <a href="/legal/refunds">Refunds</a></footer>
+<script>
+(function () {
+  var data, yearly = false;
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var lim = function (v) { return v === -1 ? '<span class="y">Unlimited</span>' : v === 0 ? '<span class="n">—</span>' : Number(v).toLocaleString('en-US'); };
+  function draw() {
+    var plans = data.plans;
+    document.getElementById('grid').innerHTML = plans.map(function (p) {
+      var price = yearly ? Math.round(p.price_year / 12) : p.price_month;
+      var href = p.price_month ? '/signup?plan=' + p.id + '&interval=' + (yearly ? 'year' : 'month') : '/signup';
+      return '<div class="pr' + (p.popular ? ' pop' : '') + '">' + (p.popular ? '<span class="pop-badge">Most popular</span>' : '') + '<h3>' + esc(p.name) + '</h3><div class="p">$' + price + ' <small>' + (p.price_month ? '/mo' : 'forever') + '</small></div><p class="t">' + esc(p.tagline) + '</p><ul>' + (p.features || []).map(function (f) { return '<li>' + esc(f) + '</li>'; }).join('') + '</ul><a class="btn" href="' + href + '">' + (p.price_month ? 'Choose ' + esc(p.name) : 'Start free') + '</a></div>';
+    }).join('');
+    var rows = [['Searches', 'searches_per_day', ' / day'], ['Saved ads', 'saves_limit'], ['AI breakdowns', 'ai_per_month', ' / month'], ['Video downloads', 'downloads_per_month', ' / month'], ['“Make it mine” scripts', 'scripts_per_month', ' / month'], ['Advertisers you can follow', 'follows_limit'], ['Team seats', 'seats']];
+    document.getElementById('cmp').innerHTML = '<thead><tr><th></th>' + plans.map(function (p) { return '<th>' + esc(p.name) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      rows.map(function (r) { return '<tr><td>' + r[0] + '</td>' + plans.map(function (p) { var v = p[r[1]]; return '<td>' + lim(v) + (v > 0 && r[2] ? '<span class="muted">' + r[2] + '</span>' : '') + '</td>'; }).join('') + '</tr>'; }).join('') +
+      '<tr><td>Every country, Facebook + Instagram</td>' + plans.map(function () { return '<td class="y">✓</td>'; }).join('') + '</tr>' +
+      '<tr><td>Ads saved forever</td>' + plans.map(function () { return '<td class="y">✓</td>'; }).join('') + '</tr>' +
+      '<tr><td>Price ' + (yearly ? '(per month, billed yearly)' : '(per month)') + '</td>' + plans.map(function (p) { return '<td><b>$' + (yearly ? Math.round(p.price_year / 12) : p.price_month) + '</b></td>'; }).join('') + '</tr></tbody>';
+  }
+  fetch('/api/public/plans-full').then(function (r) { return r.json(); }).then(function (d) {
+    data = d; draw();
+    if (d.offer) document.getElementById('offerLine').innerHTML = '<b style="color:#FF3D8B">' + esc(d.offer.title) + ':</b> ' + esc(d.offer.text) + ' Code <b>' + esc(d.offer.code) + '</b>.';
+  });
+  document.querySelectorAll('[data-y]').forEach(function (b) { b.onclick = function () { yearly = b.dataset.y === '1'; document.querySelectorAll('[data-y]').forEach(function (x) { x.classList.toggle('on', x === b); }); if (data) draw(); }; });
+})();
+</script>
+</body>
+</html>
