@@ -12,6 +12,7 @@ Everything else can be switched on later from the admin panel or by adding a var
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys | AI breakdowns, scripts, plain-English search (basic mode works without) |
 | `MAIL_API_KEY` | resend.com (recommended), brevo.com or postmarkapp.com | Emails |
 | `GATEVOO_API_KEY` + `GATEVOO_WEBHOOK_SECRET` | Gatevoo dashboard | Taking money |
+| `VOO_BASE`, `VOO_CLIENT_ID`, `VOO_CLIENT_SECRET`, `VOO_API_KEY`, `VOO_SIGNAL_SECRET` | VooSquare → Admin → Products → Spyvoo → Credentials (signal secret: `openssl rand -hex 32`) | Continue with Voo ID, affiliate commissions, VooSquare dashboard card (docs/VOOSQUARE.md) |
 
 ## 1. Put the code on GitHub (3 min)
 

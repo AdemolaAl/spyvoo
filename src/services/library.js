@@ -20,7 +20,11 @@ function createBoard(user, { name, emoji }) {
   const n = String(name || '').trim().slice(0, 60);
   if (!n) throw new HttpError(400, 'Give your board a name.');
   if (db.one('SELECT COUNT(*) n FROM boards WHERE user_id = ?', user.id).n >= 200) throw new HttpError(400, 'That’s a lot of boards. Delete a few first.');
-  return boardOut(db.one('SELECT * FROM boards WHERE id = ?', db.insert('boards', { user_id: user.id, name: n, emoji: String(emoji || '').slice(0, 8), created_at: db.now() })));
+  const at = db.now();
+  const id = db.insert('boards', { user_id: user.id, name: n, emoji: String(emoji || '').slice(0, 8), created_at: at });
+  // Event id from the row (id + creation time): stable, and a reused row id after a delete still gets a new one.
+  require('./voosquare').activity(user.id, 'board_created', ['board', id, Date.parse(at).toString(36)], 'New board');
+  return boardOut(db.one('SELECT * FROM boards WHERE id = ?', id));
 }
 function updateBoard(user, id, { name, emoji, share }) {
   const b = board(user, id);
@@ -42,6 +46,11 @@ function save(user, boardId, adId, note = '') {
   const already = db.one('SELECT 1 x FROM board_items bi JOIN boards b ON b.id = bi.board_id WHERE b.user_id = ? AND bi.ad_id = ?', user.id, Number(adId));
   if (!already) account.checkSaves(user);
   db.run('INSERT INTO board_items (board_id, ad_id, note, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(board_id, ad_id) DO UPDATE SET note = CASE WHEN excluded.note != \'\' THEN excluded.note ELSE note END', b.id, Number(adId), String(note).slice(0, 1000), db.now());
+  if (!already) {
+    const a = ads.get(adId);
+    const row = db.one('SELECT created_at FROM board_items WHERE board_id = ? AND ad_id = ?', b.id, Number(adId));
+    require('./voosquare').activity(user.id, 'ad_saved', ['save', b.id, Number(adId), Date.parse(row.created_at).toString(36)], 'Ad saved' + (a && a.adv_name ? ': ' + a.adv_name : ''));
+  }
   return boardOut(b);
 }
 function unsave(user, boardId, adId) { const b = board(user, boardId); db.run('DELETE FROM board_items WHERE board_id = ? AND ad_id = ?', b.id, Number(adId)); }
@@ -73,7 +82,7 @@ function follow(user, advertiserId, on = true) {
 }
 function following(user) {
   return db.all('SELECT v.*, f.alert, f.created_at followed_at FROM follows f JOIN advertisers v ON v.id = f.advertiser_id WHERE f.user_id = ? ORDER BY f.created_at DESC', user.id).map(v => ({
-    id: v.id, name: v.name, logo: v.logo_url, ads: v.ad_count, active_ads: v.active_ads, alert: !!v.alert, followed_at: v.followed_at,
+    id: v.id, name: v.name, logo: ads.logoOut(v.logo_url), ads: v.ad_count, active_ads: v.active_ads, alert: !!v.alert, followed_at: v.followed_at,
     new_this_week: db.one('SELECT COUNT(*) n FROM ads WHERE advertiser_id = ? AND hidden = 0 AND first_seen_at >= ?', v.id, new Date(Date.now() - 7 * 864e5).toISOString()).n
   }));
 }

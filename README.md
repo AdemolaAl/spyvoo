@@ -20,7 +20,8 @@ zero npm dependencies** and a SQLite file. It deploys to Railway in about 30 min
 | Admin control room | `/admin` | Overview with charts and health, tracking rules (+ CSV), ad data & AI, job monitor, ads manager, users, plans, payments (methods, coupons, orders), offer & Voo family slides, emails (preview, test, broadcast), settings, audit log |
 | Pipeline | `src/services/ingest.js`, `src/providers/*` | Runs tracking rules on a schedule within a daily budget, saves and de-duplicates ads, downloads media, refreshes scores |
 | Emails | `emails/*.html` | 13 branded emails (welcome, verify, reset, receipt, renewal, expired, advertiser alert, search alert, weekly report, team invite, offer, announcement, admin budget) with the Voo family strip |
-| Payments | `src/services/payments.js`, `gatevoo.js` | Gatevoo crypto checkout (USDT TRC20, Bitcoin), manual methods per country, coupons, renewals |
+| Payments | `src/services/payments.js`, `gatevoo.js` | Gatevoo crypto checkout (USDT TRC20, Bitcoin), manual methods per country, coupons, renewals, refunds and chargebacks |
+| VooSquare | `src/services/voosquare.js`, `voo-connect/` | Continue with Voo ID (email login kept), affiliate hand-off, money and activity events, summary card, support widget |
 
 ## Run it locally (2 minutes)
 
@@ -34,7 +35,7 @@ The first boot creates the database, the four plans, the SPYLAUNCH coupon, five 
 and 27 sample ads so nothing is empty. Payments run in test mode locally (`PAYMENTS_DEMO` is on outside production).
 
 ```bash
-npm test          # 51 tests, about 10 seconds
+npm test          # about 90 tests, about 20 seconds (the VooSquare end-to-end test needs the voosquare-app checkout)
 npm run check     # launch readiness: what's connected, what's missing
 npm run backup    # copy the database to data/backups/
 npm run create-admin -- you@example.com "a-long-password"
@@ -54,4 +55,4 @@ from it, add a volume at `/app/data`, paste the variables from `.env.example`, d
 - [docs/API.md](docs/API.md): every endpoint
 - [docs/EMAILS.md](docs/EMAILS.md): the email list, sender addresses and DNS
 - [docs/GATEVOO.md](docs/GATEVOO.md): crypto checkout contract
-- [docs/VOOSQUARE.md](docs/VOOSQUARE.md): one login for every Voo tool
+- [docs/VOOSQUARE.md](docs/VOOSQUARE.md): Voo ID login, affiliate hand-off, events and the summary card (Voo Connect kit in `voo-connect/`)

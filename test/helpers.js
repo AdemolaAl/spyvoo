@@ -14,6 +14,7 @@ delete process.env.GATEVOO_WEBHOOK_SECRET;
 delete process.env.VOO_ISSUER;
 delete process.env.VOO_CLIENT_ID;
 process.env.DEMO_ADS = 'true';
+process.env.TRUST_PROXY = 'true'; // the test clients act as different visitors behind a proxy (x-forwarded-for)
 delete process.env.ADMIN_EMAIL;
 delete process.env.ADMIN_PASSWORD;
 

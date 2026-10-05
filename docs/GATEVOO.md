@@ -95,6 +95,21 @@ Body: `{ "type": "invoice.paid", "data": { "id": "inv_123", "reference": "SV-...
 Header: `X-Gatevoo-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>`. Spyvoo rejects
 signatures older than 5 minutes. Retry with backoff on non-2xx for up to 24 hours.
 
+**Voo family contract (VooSquare `docs/GATEVOO.md`).** Gatevoo is being built to the contract in the voosquare-app repo,
+which differs from the one above. Spyvoo accepts both, so it works with either:
+
+| | Spyvoo contract (above) | Voo family contract |
+| --- | --- | --- |
+| Create | `POST /invoices` `{ reference, amount: { value, currency }, coins }` | `POST /api/v1/invoices` `{ order_id, amount_usd, assets, customer_email }` (Spyvoo sends both sets of fields) |
+| Read | `{ id, reference, status, paid_usd, payment: { coin, tx_hash } }` | `{ id, order_id, status, paid_amount, asset, tx_hash }` |
+| Webhook body | `{ data: { reference } }` | `{ type: "invoice.paid", invoice: { id, order_id, … } }` |
+| Signature | `t=…,v1=…` (HMAC of `t.body`) | plain lowercase hex HMAC-SHA256 of the raw body (Voo Connect `verifyGatevooSignature`) |
+
+With the family contract, set `GATEVOO_API_URL=https://<gatevoo host>/api/v1` (Spyvoo appends `/invoices`, `/me`).
+Either way the webhook only triggers a fresh `GET` of the invoice; the order activates only when it is `paid` and the USD
+received covers the order. Each confirmed payment is then reported to VooSquare as a `spend` (docs/VOOSQUARE.md);
+Gatevoo itself never reports Spyvoo's payments.
+
 Coins: `USDT_TRC20` (USDT on TRON) and `BTC`. More can be added later. Spyvoo shows whatever the admin switches on.
 
 ## 4. Prompt for the Gatevoo builder

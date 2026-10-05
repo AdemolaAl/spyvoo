@@ -67,7 +67,7 @@ ads. Everything else can be switched on later by adding a variable and redeployi
 | **Gatevoo** | Crypto checkout (USDT TRC20, BTC), Zedapex's own | `GATEVOO_API_KEY` (`gv_live_…`), `GATEVOO_WEBHOOK_SECRET`, optional `GATEVOO_API_URL` (default `https://api.gatevoo.com/v1`) | Gatevoo dashboard → create an API key for Spyvoo + a webhook secret → add webhook URL `https://spyvoo.com/webhooks/gatevoo`. The API Gatevoo must provide is in `docs/GATEVOO.md` §3 | Yes to take money | Internal (Zedapex) |
 | **OpenAI Whisper** | Transcribes video ads so the AI can read what they say | `TRANSCRIBE_API_KEY`, optional `TRANSCRIBE_API_URL`, `TRANSCRIBE_MODEL` (default `whisper-1`) | platform.openai.com → **Billing** add credit → **API keys → Create new secret key** | Optional | whisper-1: $0.006 per minute ($0.0001/sec) |
 | **Cloudflare R2** | **Stores every ad video and image**, streamed to users with zero egress fees | `MEDIA_DRIVER=r2`, `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_URL` (optional `R2_ENDPOINT`) | Cloudflare → **R2** → Create bucket `spyvoo-media` → bucket **Settings → Custom Domains** → `media.spyvoo.com` → R2 overview → **Manage R2 API Tokens** → Create (Object Read & Write, this bucket) | **Yes, from day one** | $0.015 per GB-month. Free each month: 10 GB, 1M Class A, 10M Class B ops. Then $4.50 per million writes and $0.36 per million reads. **Zero egress** |
-| **VooSquare** | Optional single sign-on for every Voo tool | `VOO_ISSUER`, `VOO_CLIENT_ID`, `VOO_CLIENT_SECRET`, `VOO_SERVICE_KEY`, `VOO_WEBHOOK_SECRET`, optional `VOO_REDIRECT_URI`, `VOO_EVENTS_URL`, `VOO_HOME_URL` | VooSquare admin → register client `spyvoo` with redirect `https://spyvoo.com/auth/voosquare/callback`. See `docs/VOOSQUARE.md` | Optional. **Note:** once `VOO_ISSUER` + `VOO_CLIENT_ID` are set, email sign-up turns off | Internal |
+| **VooSquare** | Voo ID login (next to email login), affiliate hand-off, money/activity events, summary card, support widget (Voo Connect kit in `voo-connect/`) | `VOO_BASE`, `VOO_CLIENT_ID`, `VOO_CLIENT_SECRET`, `VOO_API_KEY`, `VOO_SIGNAL_SECRET`; flags `VOO_CONNECT`, `VOO_WIDGET` (docs/VOOSQUARE.md) |
 
 ---
 
@@ -303,7 +303,7 @@ The Admin **Overview → System health** and the **Job monitor** are the friendl
 
 **Scaling**
 - Keep **one replica**. SQLite and the in-process scheduler (scrape 5 min, media 1 min, refresh 1 h, alerts 30 min,
-  billing 1 h, voosquare 1 min, weekly Mon 08:00 UTC, cleanup daily) assume a single instance. Scale up first by
+  billing 1 h, voosquare 1 min (plus the kit's own sender every VOO_FLUSH_MS), weekly Mon 08:00 UTC, cleanup daily) assume a single instance. Scale up first by
   giving the service more RAM/CPU.
 - Media is on R2 from launch, so the Railway volume only holds the database and backups. Watch R2 storage in the Cloudflare dashboard.
 - Move to Postgres when you need more than one web instance or the DB passes about 20 GB. The schema is in
@@ -331,7 +331,7 @@ it in `REGISTRY` in `src/providers/index.js`, deploy, and pick it in Admin → A
 | Resend 429 / emails stop mid-Monday | Free plan's 100/day cap. Upgrade to Pro. The app already paces sends (about 2 a second) and retries 429/5xx, so short bursts are fine. |
 | Gatevoo "rejected the API key" | Wrong `GATEVOO_API_KEY` or `GATEVOO_API_URL`. |
 | Order paid but plan not active | Webhook not reaching `/webhooks/gatevoo`, a wrong secret, or the server clock is off (signatures older than 5 min are rejected). Press **Check** on the order. Underpaid orders stay pending on purpose. |
-| Everyone shares one IP in rate limits | `TRUST_PROXY` must be `true` behind Railway. |
+| Everyone shares one IP in rate limits | `TRUST_PROXY` must be `true` behind Railway (it is by default when `RAILWAY_ENVIRONMENT` is set; anywhere else it defaults to off, so a visitor cannot fake an address with `X-Forwarded-For`). Only the last `X-Forwarded-For` entry (the one the proxy adds) counts. |
 | Media 404s | Media job still running or failed. Press **Retry failed media**. With R2, check `R2_PUBLIC_URL`. |
 | Logged out when switching www/apex | Add the www → apex redirect rule (§3.6). |
 
@@ -354,8 +354,8 @@ it in `REGISTRY` in `src/providers/index.js`, deploy, and pick it in Admin → A
 - [ ] Volume backups are on, and one `npm run backup` has been run.
 - [ ] SPF, DKIM and DMARC are published.
 - [ ] Legal pages are reviewed: company shown as "Zedapex Limited, Lagos", and the contact emails are right.
-- [ ] If VooSquare is on, `VOO_REDIRECT_URI` exactly matches the registered URI, and admins can still log in with a
-      password.
+- [ ] If VooSquare is on: `npm run check -- --ping` shows "VooSquare self-test passed" (redirect URIs, secret, API key,
+      logout and summary URL), and admins can still log in with a password.
 - [ ] Maintenance mode tested once (on → user sees "back soon" → off).
 
 ---

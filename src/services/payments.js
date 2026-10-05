@@ -30,7 +30,7 @@ function coupon(code, { user, plan, interval } = {}) {
   if (c.max_uses && c.uses >= c.max_uses) return { ok: false, reason: 'That code has been fully used.' };
   if (plan && c.plans && !c.plans.split(',').includes(plan)) return { ok: false, reason: 'That code doesn’t work on this plan.' };
   if (interval && c.intervals && !c.intervals.split(',').includes(interval)) return { ok: false, reason: 'That code is for ' + c.intervals.replace(',', ' or ') + 'ly plans only.' };
-  if (user && c.first_purchase_only && db.one("SELECT id FROM orders WHERE user_id = ? AND status = 'paid'", user.id)) return { ok: false, reason: 'That code is for your first purchase only.' };
+  if (user && c.first_purchase_only && db.one('SELECT id FROM orders WHERE user_id = ? AND paid_at IS NOT NULL', user.id)) return { ok: false, reason: 'That code is for your first purchase only.' };
   return { ok: true, coupon: c };
 }
 
@@ -125,7 +125,8 @@ function fulfill(ref, { via = 'manual', provider_ref: pref } = {}) {
       name: (result.user.name || '').split(' ')[0] || 'there', plan: account.plan(result.plan_id).name, interval: result.interval, amount: result.amount_usd.toFixed(2), currency: 'USD', reference: result.ref,
       date: longDate(), renew_date: longDate(result.renews), coin: meta.coin ? (gv.COINS[meta.coin] || {}).label + ' (' + (gv.COINS[meta.coin] || {}).network + ')' : '', dashboard_url: config.appUrl + '/app'
     });
-    require('./voosquare').safeEmit(result.user.id, 'plan_purchased', { label: 'Upgraded to ' + account.plan(result.plan_id).name, valueUsd: result.amount_usd });
+    // VooSquare: spend (+ plan_started / plan_renewed) with a stable id built from the order id.
+    try { require('./voosquare').paymentEvents(db.one('SELECT * FROM orders WHERE ref = ?', ref)); } catch (e) { console.error('[voosquare] payment events', e.message); }
   }
   return result;
 }
@@ -154,6 +155,7 @@ function renewals() {
   for (const u of db.all("SELECT * FROM users WHERE plan_id != 'free' AND plan_renews_at IS NOT NULL AND plan_renews_at < ?", cut)) {
     const old = account.plan(u.plan_id).name;
     db.update('users', u.id, { plan_id: 'free', plan_renews_at: null });
+    require('./voosquare').planCancelled(u.id, u.plan_id, String(u.plan_renews_at).slice(0, 10));
     db.run('UPDATE users SET team_owner_id = NULL WHERE team_owner_id = ?', u.id);
     db.insert('notifications', { user_id: u.id, kind: 'billing', title: 'Your ' + old + ' plan ended', body: 'You’re on Free now. Your boards and saved ads are safe.', url: '/app/plan', created_at: db.now() });
     mailer.send(u.email, 'plan-expired', { name: (u.name || '').split(' ')[0] || 'there', plan: old, plan_url: config.appUrl + '/app/plan' });
@@ -162,4 +164,44 @@ function renewals() {
   return { reminded, expired };
 }
 
-module.exports = { methodsFor, methodOut, coupon, quote, checkout, fulfill, ordersFor, renewals, periodEnd };
+// Admin: money went back to the customer (all or part of a paid order). VooSquare logs it; affiliate commission stays.
+// endPlan: switch the customer to Free now when this order's plan is the one they are on.
+function refund(ref, { amount, endPlan = true, by = '' } = {}) {
+  return settleBack(ref, 'refunded', { amount, endPlan, by });
+}
+// Admin: the payment was disputed and charged back. The plan always ends; VooSquare reverses the commission.
+function chargeback(ref, { amount, by = '' } = {}) {
+  return settleBack(ref, 'charged_back', { amount, endPlan: true, by });
+}
+function settleBack(ref, status, { amount, endPlan, by }) {
+  let out = null;
+  db.tx(() => {
+    const o = db.one('SELECT * FROM orders WHERE ref = ?', String(ref));
+    if (!o) throw new HttpError(404, 'Order not found');
+    const allowed = status === 'refunded' ? ['paid'] : ['paid', 'refunded'];
+    if (!allowed.includes(o.status)) throw new HttpError(400, status === 'refunded' ? 'Only paid orders can be refunded (this one is ' + o.status + ').' : 'Only paid or refunded orders can be charged back (this one is ' + o.status + ').');
+    const value = amount === undefined || amount === null || amount === '' ? o.amount_usd : round2(Number(amount));
+    if (!(value >= 0.01) || value > o.amount_usd + 0.001) throw new HttpError(400, 'The amount must be between $0.01 and $' + o.amount_usd.toFixed(2) + '.');
+    const meta = db.json(o.meta, {});
+    meta[status === 'refunded' ? 'refund' : 'chargeback'] = { amount_usd: value, at: db.now(), by };
+    db.update('orders', o.id, { status, meta: JSON.stringify(meta) });
+    const u = db.one('SELECT * FROM users WHERE id = ?', o.user_id);
+    let ended = false;
+    if (endPlan && u && u.plan_id === o.plan_id && u.plan_id !== 'free') {
+      // Only end the plan when no other paid order still covers it.
+      const other = db.one("SELECT id FROM orders WHERE user_id = ? AND plan_id = ? AND status = 'paid' AND id != ? LIMIT 1", u.id, o.plan_id, o.id);
+      if (!other) {
+        db.update('users', u.id, { plan_id: 'free', plan_renews_at: null });
+        db.run('UPDATE users SET team_owner_id = NULL WHERE team_owner_id = ?', u.id);
+        ended = true;
+      }
+    }
+    out = { order: { ...o, status, meta }, value, ended, user: u };
+  });
+  const vs = require('./voosquare');
+  const ev = status === 'refunded' ? vs.refundEvent(out.order, out.value) : vs.chargebackEvent(out.order, out.value);
+  if (out.ended) vs.planCancelled(out.user.id, out.order.plan_id, status + '-' + out.order.ref);
+  return { ok: true, status, amount: out.value, plan_ended: out.ended, voo_event: ev || null };
+}
+
+module.exports = { methodsFor, methodOut, coupon, quote, checkout, fulfill, ordersFor, renewals, periodEnd, refund, chargeback };

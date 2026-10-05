@@ -8,8 +8,8 @@ must send the header **`x-sv: 1`** (CSRF guard). Errors: non-2xx with `{ "error"
 | Method | Path | Body / notes |
 | --- | --- | --- |
 | GET | `/api/auth/me` | `{ user, voosquare }`; `user` is null when logged out |
-| POST | `/api/auth/signup` | `{ name, email, password (8+), country (ISO-2), niche?, ref? }` → starts a session, sends `welcome` |
-| POST | `/api/auth/login` | `{ email, password }` |
+| POST | `/api/auth/signup` | `{ name, email, password (8+), country (ISO-2), niche?, ref? }` → starts a session, sends `welcome`. With VooSquare on: 403 `{ login_url: '/auth/voosquare?signup=1' }` (new accounts are Voo IDs) |
+| POST | `/api/auth/login` | `{ email, password }` (works with VooSquare on too) |
 | POST | `/api/auth/logout` | |
 | POST | `/api/auth/forgot` | `{ email }` → always 200, emails a reset link if the account exists |
 | POST | `/api/auth/reset` | `{ token, password }` |
@@ -25,8 +25,8 @@ must send the header **`x-sv: 1`** (CSRF guard). Errors: non-2xx with `{ "error"
 | --- | --- | --- |
 | GET | `/bootstrap` | User, plan, usage meter, offer, family slides, unread count, announcement |
 | GET | `/home` | Winners, trending niches, longest runners, recent ads, checklist |
-| GET | `/search` | `q, countries, niche, cta, media, platforms, status, min_days, sort (score/new/days), offset` (counts 1 search) |
-| POST | `/ai-search` | `{ text }` → filters understood + results ("crypto ads in Brazil over 30 days") |
+| GET | `/search` | `q, countries, niche, cta, media, platforms, status, min_days, sort (score/new/days), offset` (counts 1 search). Browsing is paced per account: 120 calls a minute and 3,000 a day across `/search` and `/ads/:id` (429 after) |
+| POST | `/ai-search` | `{ text }` → filters understood + results ("crypto ads in Brazil over 30 days"). 30 a minute per visitor, 200 a day per account (429 after). |
 | GET | `/ads/:id` | Full ad: media, timeline, stats, advertiser, saved boards, analysis if unlocked |
 | POST | `/ads/:id/analyse` | AI breakdown (counts once per ad per user) |
 | POST | `/ads/:id/mine` | `{ product }` → "Make it mine" scripts (hooks, script, captions) |
@@ -55,7 +55,7 @@ must send the header **`x-sv: 1`** (CSRF guard). Errors: non-2xx with `{ "error"
 
 ## Website — `/api/public` (no login)
 `GET /site` (stats, plans, offer, family, company), `GET /plans-full`, `GET /featured`, `GET /search?q=` (try-it search,
-rate limited, first N results visible, rest locked), `GET /countries`, `GET /coupon?code=`.
+rate limited, first N results visible, rest locked), `GET /countries`, `GET /coupon?code=` (30 checks per 10 minutes per visitor).
 
 ## Admin — `/api/admin` (admins only)
 `GET /overview` · rules: `GET/POST /rules`, `PATCH/DELETE /rules/:id`, `POST /rules/:id/run`, `POST /rules/import { csv }` ·
@@ -65,12 +65,15 @@ ads: `GET /ads?q&filter&source&offset`, `PATCH/DELETE /ads/:id`, `POST /ads/:id/
 users: `GET /users?q&offset`, `GET/PATCH /users/:id { plan_id, plan_renews_at, role, suspended, name }` ·
 plans: `GET /plans`, `PUT/DELETE /plans/:id` ·
 payments: `GET /payments`, `POST /payments/methods`, `PATCH/DELETE /payments/methods/:id`, `POST /payments/gatevoo/ping`,
-`GET /orders?status`, `POST /orders/:ref/paid`, `POST /orders/:ref/check`, `POST /coupons`, `PATCH/DELETE /coupons/:code` ·
+`GET /orders?status`, `POST /orders/:ref/paid`, `POST /orders/:ref/check`, `POST /orders/:ref/refund { amount?, end_plan? }`, `POST /orders/:ref/chargeback { amount? }` (both send the VooSquare event), `POST /coupons`, `PATCH/DELETE /coupons/:code` ·
 settings: `GET /settings`, `PATCH /settings/:group { value }` for platforms, score, announcement, offer, family, niches,
 company, billing, flags · emails: `GET /emails`, `GET /emails/:name/preview`, `POST /emails/test { to, name }`,
-`POST /emails/broadcast { subject, body, plan?, dry? }`, `POST /emails/offer { dry? }` · `GET /audit`.
+`POST /emails/broadcast { subject, body, plan?, dry? }`, `POST /emails/offer { dry? }` · `GET /audit` ·
+VooSquare: `GET /voosquare` (what is on, queued and refused events), `POST /voosquare/flush`.
 
 ## Webhooks and integrations
-- `POST /webhooks/gatevoo` — signed (`X-Gatevoo-Signature`), see GATEVOO.md.
-- `GET /api/voosquare/summary` — for VooSquare, see VOOSQUARE.md.
+- `POST /webhooks/gatevoo` — signed (`X-Gatevoo-Signature`: `t=…,v1=…` or plain hex HMAC of the body), see GATEVOO.md.
+- `GET /api/voosquare/summary` — for VooSquare (Bearer `VOO_API_KEY`), see VOOSQUARE.md.
+- `GET /auth/voosquare?return_to=&signup=1`, `GET /auth/voosquare/callback`, `GET /logout` — Voo ID login and logout
+  everywhere; `GET /voo-connect-browser.js` — the landing-page snippet. See VOOSQUARE.md.
 - `GET /healthz` — `{ ok: true }` for Railway.

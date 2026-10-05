@@ -83,6 +83,7 @@ async function testScrape({ value, country = 'ALL', type = 'keyword' }) {
   const job = db.insert('jobs', { kind: 'scrape', ref: 'Test: ' + value, provider: provider.id, status: 'running', started_at: db.now(), created_at: db.now() });
   try {
     if (!provider.configured()) throw new Error(provider.label + ' is not connected yet.');
+    if (provider.id !== 'demo' && budgetLeft() <= 0) throw new Error('Daily credit budget reached ($' + settings.get('provider').daily_budget_usd + '). Raise it in Admin → Ad data & AI to test now.');
     const out = await provider.search({ type, value, countries: [country], limit: 10, activeOnly: true });
     const res = save(out.ads.slice(0, 10), { source: provider.id });
     db.update('jobs', job, { status: 'done', ads_found: res.found, ads_new: res.created, credits_used: out.credits || 0, finished_at: db.now() });

@@ -91,17 +91,14 @@ async function remove(key) {
   try { fs.unlinkSync(localPath(key)); } catch { /* already gone */ }
 }
 
+// Ad media come from addresses a third party chose (the scraper's output): only public http(s) hosts, capped size,
+// each redirect re-checked (lib/netguard). MEDIA_ALLOW_PRIVATE=true lifts the host check outside production (tests).
 async function fetchBytes(src) {
-  const res = await fetch(src, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SpyvooBot/1.0)' }, redirect: 'follow', signal: AbortSignal.timeout(90000) });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const len = Number(res.headers.get('content-length') || 0);
-  if (len > MAX_BYTES) throw new Error('File too large (' + Math.round(len / 1e6) + ' MB)');
-  const type = String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > MAX_BYTES) throw new Error('File too large');
+  const { buf, type } = await require('../lib/netguard').safeGet(src, { maxBytes: MAX_BYTES, timeoutMs: 90000, allowPrivate: allowPrivate() });
   if (!buf.length) throw new Error('Empty file');
   return { buf, type };
 }
+const allowPrivate = () => !config.isProd && /^(1|true|yes)$/i.test(process.env.MEDIA_ALLOW_PRIVATE || '');
 function sniff(buf, type) {
   if (TYPES[type]) return type;
   if (buf.slice(4, 8).toString() === 'ftyp') return 'video/mp4';
@@ -135,7 +132,8 @@ async function download(m) {
     return true;
   } catch (e) {
     const attempts = m.attempts + 1;
-    db.update('ad_media', m.id, { attempts, error: String(e.message).slice(0, 300), status: attempts >= 3 ? 'failed' : 'pending', next_at: new Date(now + 60e3 * 5 ** attempts).toISOString() });
+    // An address that is never allowed (private network, not http) fails at once: retrying cannot help.
+    db.update('ad_media', m.id, { attempts, error: String(e.message).slice(0, 300), status: attempts >= 3 || e.blocked ? 'failed' : 'pending', next_at: new Date(now + 60e3 * 5 ** attempts).toISOString() });
     return false;
   }
 }
@@ -159,4 +157,4 @@ function usage() {
   return { driver: driver(), ...r };
 }
 
-module.exports = { url, put, remove, download, work, usage, driver, localPath, sniff, s3, presign, downloadUrl, TYPES };
+module.exports = { url, put, remove, download, work, usage, driver, localPath, sniff, s3, presign, downloadUrl, fetchBytes, TYPES };

@@ -307,6 +307,22 @@ module.exports = function (app) {
     audit(req, 'order_mark_paid', o.ref);
     return { ok: true };
   });
+  // Money back to the customer (VooSquare logs it, affiliate commission stays) and disputes (commission reversed).
+  app.post('/api/admin/orders/:ref/refund', req => {
+    A(req);
+    const b = req.body || {};
+    const r = payments.refund(req.params.ref, { amount: b.amount, endPlan: b.end_plan !== false, by: req.user.email });
+    audit(req, 'order_refund', req.params.ref + ' $' + r.amount + (r.plan_ended ? ' (plan ended)' : ''));
+    return r;
+  });
+  app.post('/api/admin/orders/:ref/chargeback', req => {
+    A(req);
+    const r = payments.chargeback(req.params.ref, { amount: (req.body || {}).amount, by: req.user.email });
+    audit(req, 'order_chargeback', req.params.ref + ' $' + r.amount);
+    return r;
+  });
+  app.get('/api/admin/voosquare', req => { A(req); return require('../services/voosquare').status(); });
+  app.post('/api/admin/voosquare/flush', async req => { A(req); return require('../services/voosquare').flush(); });
   app.post('/api/admin/orders/:ref/check', async req => {
     A(req);
     const o = db.one('SELECT * FROM orders WHERE ref = ?', req.params.ref);

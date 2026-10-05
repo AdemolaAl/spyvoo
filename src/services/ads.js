@@ -4,6 +4,7 @@ const db = require('../db');
 const settings = require('./settings');
 const countries = require('../lib/countries');
 const media = require('./media');
+const { httpUrl, mediaUrl } = require('../lib/urls');
 
 const DAY = 864e5;
 
@@ -74,10 +75,10 @@ function upsert(n, { source = 'apify', niche = '' } = {}) {
     const pageId = String(n.page_id || 'name:' + n.page_name).slice(0, 80);
     let adv = db.one('SELECT * FROM advertisers WHERE page_id = ?', pageId);
     if (!adv) {
-      const id = db.insert('advertisers', { page_id: pageId, name: String(n.page_name || 'Unknown advertiser').slice(0, 160), logo_url: /^https?:\/\//i.test(n.page_logo || '') ? n.page_logo : '', page_url: n.page_url || (n.page_id ? 'https://www.facebook.com/' + n.page_id : ''), category: n.category || '', first_seen_at: now, last_seen_at: now });
+      const id = db.insert('advertisers', { page_id: pageId, name: String(n.page_name || 'Unknown advertiser').slice(0, 160), logo_url: httpUrl(n.page_logo), page_url: httpUrl(n.page_url) || (/^\d+$/.test(String(n.page_id || '')) ? 'https://www.facebook.com/' + n.page_id : ''), category: n.category || '', first_seen_at: now, last_seen_at: now });
       adv = db.one('SELECT * FROM advertisers WHERE id = ?', id);
     } else {
-      db.update('advertisers', adv.id, { last_seen_at: now, ...(n.page_name ? { name: String(n.page_name).slice(0, 160) } : {}), ...(/^https?:\/\//i.test(n.page_logo || '') && !/^\/media\//.test(adv.logo_url) ? { logo_url: n.page_logo } : {}), ...(n.category ? { category: n.category } : {}) });
+      db.update('advertisers', adv.id, { last_seen_at: now, ...(n.page_name ? { name: String(n.page_name).slice(0, 160) } : {}), ...(httpUrl(n.page_logo) && !/^\/media\//.test(adv.logo_url) ? { logo_url: httpUrl(n.page_logo) } : {}), ...(n.category ? { category: n.category } : {}) });
     }
     const text = [n.primary_text, n.headline, n.description].filter(Boolean).join(' ');
     const row = {
@@ -91,7 +92,7 @@ function upsert(n, { source = 'apify', niche = '' } = {}) {
       collation_id: String(n.collation_id || ''),
       cta_type: String(n.cta_type || CTA_FROM_TEXT[String(n.cta_text || '').toLowerCase()] || '').toUpperCase().slice(0, 40),
       cta_text: String(n.cta_text || ctaLabel(n.cta_type) || '').slice(0, 60),
-      landing_url: (/^https?:\/\//i.test(n.landing_url || '') ? String(n.landing_url) : '').slice(0, 1000), landing_domain: domainOf(n.landing_url),
+      landing_url: httpUrl(n.landing_url, 1000), landing_domain: domainOf(httpUrl(n.landing_url, 1000)),
       primary_text: String(n.primary_text || '').slice(0, 5000), headline: String(n.headline || '').slice(0, 300), description: String(n.description || '').slice(0, 1000),
       language: String(n.language || '').slice(0, 10),
       media_type: n.media_type || ((n.media || []).some(m => m.type === 'video') ? 'video' : (n.media || []).length > 1 ? 'carousel' : 'image')
@@ -107,9 +108,9 @@ function upsert(n, { source = 'apify', niche = '' } = {}) {
       id = db.insert('ads', { library_id: String(n.library_id).slice(0, 64), ...row, niche: niche || guessNiche(text), first_seen_at: now, source, created_at: now });
       isNew = true;
       (n.media || []).slice(0, 10).forEach((m, i) => db.insert('ad_media', {
-        ad_id: id, type: m.type === 'video' ? 'video' : 'image', position: i, source_url: String(m.url || '').slice(0, 2000), poster_source_url: String(m.poster || '').slice(0, 2000),
-        storage_key: m.key || '', poster_key: m.poster_key || '', width: m.width || null, height: m.height || null, duration_s: m.duration || null,
-        status: m.key ? 'done' : m.url ? 'pending' : 'failed', next_at: now
+        ad_id: id, type: m.type === 'video' ? 'video' : 'image', position: i, source_url: httpUrl(m.url), poster_source_url: httpUrl(m.poster),
+        storage_key: safeKey(m.key), poster_key: safeKey(m.poster_key), width: m.width || null, height: m.height || null, duration_s: m.duration || null,
+        status: safeKey(m.key) ? 'done' : httpUrl(m.url) ? 'pending' : 'failed', next_at: now
       }));
     }
     refresh(id);
@@ -215,9 +216,13 @@ function search(p = {}) {
 }
 function count(p) { const { where, args } = buildWhere(p); return db.one('SELECT COUNT(*) n FROM ads a WHERE ' + where, ...args).n; }
 
+// A provider may hand us files it already stored: our bundled /img/... samples or a storage key (never a URL or "..").
+function safeKey(k) { const s = String(k || ''); return (/^\/img\/[A-Za-z0-9/_.-]+$/.test(s) || /^[A-Za-z0-9][A-Za-z0-9/_.-]*$/.test(s)) && !s.includes('..') ? s.slice(0, 300) : ''; }
+// Every address shown to users is re-checked on the way out too (rows saved before this check existed).
+const logoOut = l => (l ? mediaUrl(l.startsWith('key:') ? media.url(l.slice(4)) : l) : '');
 function mediaFor(adId) {
   return db.all('SELECT * FROM ad_media WHERE ad_id = ? ORDER BY position', adId).map(m => ({
-    id: m.id, type: m.type, url: m.storage_key ? media.url(m.storage_key) : m.source_url, poster: m.poster_key ? media.url(m.poster_key) : (m.poster_source_url || (m.type === 'image' ? (m.storage_key ? media.url(m.storage_key) : m.source_url) : '')),
+    id: m.id, type: m.type, url: mediaUrl(m.storage_key ? media.url(m.storage_key) : m.source_url), poster: mediaUrl(m.poster_key ? media.url(m.poster_key) : (m.poster_source_url || (m.type === 'image' ? (m.storage_key ? media.url(m.storage_key) : m.source_url) : ''))),
     stored: !!m.storage_key, status: m.status, duration: m.duration_s
   }));
 }
@@ -225,7 +230,7 @@ function mediaFor(adId) {
 function card(a) {
   const m = mediaFor(a.id);
   return {
-    id: a.id, library_id: a.library_id, advertiser: { id: a.advertiser_id, name: a.adv_name, logo: a.adv_logo ? (a.adv_logo.startsWith('key:') ? media.url(a.adv_logo.slice(4)) : a.adv_logo) : '' },
+    id: a.id, library_id: a.library_id, advertiser: { id: a.advertiser_id, name: a.adv_name, logo: logoOut(a.adv_logo) },
     text: a.primary_text, headline: a.headline, cta: a.cta_text || ctaLabel(a.cta_type), cta_type: a.cta_type,
     countries: uncsv(a.countries), platforms: uncsv(a.platforms), status: a.status, start_date: a.start_date, last_seen_at: a.last_seen_at,
     days: a.days_running, variations: a.variation_count, score: a.winner_score, niche: a.niche, media_type: a.media_type,
@@ -244,11 +249,11 @@ function detail(id) {
   const an = db.one('SELECT * FROM ad_analysis WHERE ad_id = ?', a.id);
   const siblings = a.collation_id ? db.all('SELECT a.*, v.name adv_name, v.logo_url adv_logo FROM ads a JOIN advertisers v ON v.id = a.advertiser_id WHERE a.collation_id = ? AND a.id != ? AND a.hidden = 0 ORDER BY a.start_date LIMIT 12', a.collation_id, a.id).map(card) : [];
   return {
-    ...card(a), description: a.description, landing_url: /^https?:\/\//i.test(a.landing_url || '') ? a.landing_url : '', language: a.language, end_date: a.end_date, first_seen_at: a.first_seen_at,
+    ...card(a), description: a.description, landing_url: httpUrl(a.landing_url, 1000), language: a.language, end_date: a.end_date, first_seen_at: a.first_seen_at,
     media: mediaFor(a.id), variations_list: siblings, countries_named: uncsv(a.countries).map(c => ({ code: c, name: countries.name(c), flag: countries.flag(c) })),
     library_url: /^\d+$/.test(a.library_id) ? 'https://www.facebook.com/ads/library/?id=' + a.library_id : '',
     analysis: an ? analysisOut(an) : null,
-    advertiser: { ...card(a).advertiser, page_url: (db.one('SELECT page_url FROM advertisers WHERE id = ?', a.advertiser_id) || {}).page_url || '' }
+    advertiser: { ...card(a).advertiser, page_url: httpUrl((db.one('SELECT page_url FROM advertisers WHERE id = ?', a.advertiser_id) || {}).page_url) }
   };
 }
 function analysisOut(an) { return { hook: an.hook, angle: an.angle, offer: an.offer, audience: an.audience, triggers: db.json(an.triggers, []), format: an.format, transcript: an.transcript, why: an.why, how_to_adapt: an.how_to_adapt, model: an.model, created_at: an.created_at }; }
@@ -266,7 +271,7 @@ function advertiser(id) {
   }
   const best = db.one('SELECT MAX(winner_score) s, MAX(days_running) d FROM ads WHERE advertiser_id = ? AND hidden = 0', v.id);
   return {
-    id: v.id, name: v.name, logo: v.logo_url.startsWith('key:') ? media.url(v.logo_url.slice(4)) : v.logo_url, page_url: v.page_url, category: v.category,
+    id: v.id, name: v.name, logo: logoOut(v.logo_url), page_url: httpUrl(v.page_url), category: v.category,
     ads: v.ad_count, active_ads: v.active_ads, first_seen_at: v.first_seen_at, best_score: best.s || 0, longest_days: best.d || 0,
     countries: Object.entries(top).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([code, n]) => ({ code, name: countries.name(code), flag: countries.flag(code), ads: n })),
     weeks
@@ -338,4 +343,4 @@ function trendingNichesNow(limit) {
     }));
 }
 
-module.exports = { CTA, ctaLabel, PLATFORMS, csv, uncsv, guessNiche, domainOf, daysRunning, score, upsert, refresh, refreshAll, refreshRecent, ftsSync, search, count, card, get, detail, mediaFor, analysisOut, advertiser, parseQuery, ftsQuery, stats, trendingNiches, iso };
+module.exports = { safeKey, logoOut, CTA, ctaLabel, PLATFORMS, csv, uncsv, guessNiche, domainOf, daysRunning, score, upsert, refresh, refreshAll, refreshRecent, ftsSync, search, count, card, get, detail, mediaFor, analysisOut, advertiser, parseQuery, ftsQuery, stats, trendingNiches, iso };

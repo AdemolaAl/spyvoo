@@ -11,38 +11,59 @@ const media = require('../services/media');
 const voo = require('../services/voosquare');
 const library = require('../services/library');
 const { page, notice } = require('../views/layout');
+const { csp } = require('../lib/csp');
 const { esc } = md;
 
 const VIEWS = path.join(config.root, 'views');
 const cache = new Map();
+const PUBLIC_VIEWS = ['site/index.html', 'site/pricing.html', 'site/auth.html'];
 function view(name) {
   if (config.isProd && cache.has(name)) return cache.get(name);
-  const html = fs.readFileSync(path.join(VIEWS, name), 'utf8').replace(/\{\{APP_URL\}\}/g, config.appUrl);
+  let html = fs.readFileSync(path.join(VIEWS, name), 'utf8').replace(/\{\{APP_URL\}\}/g, config.appUrl).replace(/\{\{VOO_APP_URL\}\}/g, esc(voo.publicInfo().app_url));
+  // Landing pages: the Voo Connect browser snippet keeps the affiliate click even when the page comes from a cache.
+  if (voo.enabled() && PUBLIC_VIEWS.includes(name)) html = html.replace('</body>', '<script src="/voo-connect-browser.js" defer></script>\n</body>');
   cache.set(name, html);
   return html;
 }
-const html = (res, body, status = 200, extra = {}) => res.send(body, status, 'text/html; charset=utf-8', { 'Cache-Control': 'no-cache', ...extra });
+// VooSquare support widget on every page but the admin (with the member's email and name when logged in).
+function withWidget(body, user) {
+  const w = voo.widget();
+  if (!w) return body;
+  const who = user ? ' data-email="' + esc(user.email) + '" data-name="' + esc(user.name || '') + '"' : '';
+  return body.replace('</body>', '<script src="' + esc(w.src) + '" data-product="' + w.product + '"' + who + ' defer></script>\n</body>');
+}
+// Form posts (test checkouts) must come from our own pages: another site cannot submit them for a logged-in user.
+function sameOrigin(req) {
+  const o = String(req.headers.origin || req.headers.referer || '');
+  if (!o || o === 'null') return req.headers['sec-fetch-site'] ? req.headers['sec-fetch-site'] === 'same-origin' : true;
+  try { const u = new URL(o); return u.origin === new URL(config.appUrl).origin || u.host === req.headers.host; } catch { return false; }
+}
+const html = (res, body, status = 200, extra = {}) => res.send(body, status, 'text/html; charset=utf-8', { 'Cache-Control': 'no-cache', 'Content-Security-Policy': csp(body), ...extra });
+const page2 = (req, res, name, status, extra) => html(res, withWidget(view(name), req.user), status, extra);
 const safeNext = n => (/^\/(app|admin|invite)(\/|\?|$)/.test(String(n || '')) && !String(n).startsWith('//') ? String(n).slice(0, 300) : '');
 
 module.exports = function (app) {
-  app.get('/', (req, res) => html(res, view('site/index.html')));
-  app.get('/pricing', (req, res) => html(res, view('site/pricing.html')));
+  app.get('/', (req, res) => page2(req, res, 'site/index.html'));
+  app.get('/pricing', (req, res) => page2(req, res, 'site/pricing.html'));
 
   // Login pages. With VooSquare on, they hand over to VooSquare (admins can still use /login?password=1).
   const authPage = mode => (req, res) => {
     const next = safeNext(req.query.next) || (req.query.plan ? '/app/plan?checkout=' + encodeURIComponent(req.query.plan) + '&interval=' + (req.query.interval === 'year' ? 'year' : 'month') : '');
-    if (voo.enabled() && (mode === 'login' || mode === 'signup') && !req.query.password) {
-      const q = new URLSearchParams(); if (next) q.set('return_to', next); if (mode === 'signup') q.set('signup', '1');
-      return res.redirect('/auth/voosquare' + (q.toString() ? '?' + q : ''));
-    }
     if (req.user && (mode === 'login' || mode === 'signup')) return res.redirect(next || '/app');
-    html(res, view('site/auth.html').replace('data-mode="login"', 'data-mode="' + mode + '"'), 200, { 'X-Robots-Tag': mode === 'login' || mode === 'signup' ? 'index' : 'noindex' });
+    // With VooSquare on, new accounts are made with a Voo ID: "Start free" goes straight there (the affiliate click,
+    // kept in voo_attr, rides along). Log in shows "Continue with Voo ID" and the email + password form.
+    if (voo.enabled() && mode === 'signup') {
+      const q = new URLSearchParams({ signup: '1' }); if (next) q.set('return_to', next);
+      return res.redirect('/auth/voosquare?' + q);
+    }
+    html(res, withWidget(view('site/auth.html'), req.user).replace('data-mode="login"', 'data-mode="' + mode + '"'), 200, { 'X-Robots-Tag': mode === 'login' || mode === 'signup' ? 'index' : 'noindex' });
   };
   for (const m of ['login', 'signup', 'forgot', 'reset', 'verify', 'invite']) app.get('/' + m, authPage(m));
 
   // Dashboard and admin (single-page apps).
-  app.get('/app', (req, res) => (req.user ? html(res, view('app.html'), 200, { 'X-Robots-Tag': 'noindex' }) : res.redirect('/login?next=' + encodeURIComponent(req.url))));
-  app.get('/app/*', (req, res) => (req.user ? html(res, view('app.html'), 200, { 'X-Robots-Tag': 'noindex' }) : res.redirect('/login?next=' + encodeURIComponent(req.url))));
+  const appShell = (req, res) => (req.user ? page2(req, res, 'app.html', 200, { 'X-Robots-Tag': 'noindex' }) : res.redirect('/login?next=' + encodeURIComponent(req.url)));
+  app.get('/app', appShell);
+  app.get('/app/*', appShell);
   const adminShell = (req, res) => {
     if (!req.user) return res.redirect('/login?password=1&next=' + encodeURIComponent(req.url));
     if (req.user.role !== 'admin') return html(res, notice('Admins only', 'This area is for admins', 'Log in with an admin account to open the Spyvoo admin panel.'), 403);
@@ -93,6 +114,7 @@ module.exports = function (app) {
     const o = demoOrder(req);
     if (!o) return html(res, notice('Not found', 'Checkout not found', 'This test checkout is not available.'), 404);
     if (o.status !== 'pending') return res.redirect('/app/plan?order=' + encodeURIComponent(o.ref));
+    if (!sameOrigin(req)) return html(res, notice('Blocked', 'Blocked', 'Start the checkout again from your dashboard.'), 403);
     require('../services/payments').fulfill(o.ref, { via: 'demo' });
     res.redirect('/app/plan?order=' + encodeURIComponent(o.ref) + '&paid=1');
   });
@@ -118,8 +140,7 @@ module.exports = function (app) {
     const o = gvOrder(req);
     if (!o) return html(res, notice('Not found', 'Checkout not found', 'This crypto checkout is not available.'), 404);
     if (o.status !== 'pending') return res.redirect('/app/plan?order=' + encodeURIComponent(o.ref));
-    const origin = req.headers.origin || req.headers.referer || '';
-    if (origin && !origin.startsWith(config.appUrl) && !origin.includes('//' + req.headers.host)) return html(res, notice('Blocked', 'Blocked', 'Start the checkout again from your dashboard.'), 403);
+    if (!sameOrigin(req)) return html(res, notice('Blocked', 'Blocked', 'Start the checkout again from your dashboard.'), 403);
     require('../services/gatevoo').sandboxPay(o.ref, String((req.body || {}).coin || ''));
     res.redirect('/app/plan?order=' + encodeURIComponent(o.ref));
   });

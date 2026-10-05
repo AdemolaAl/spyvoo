@@ -24,7 +24,8 @@
       '<nav class="nav">' + NAV.map(function (n) { return '<a href="' + n.href + '" data-nav="' + n.href + '">' + SV.G(n.icon) + '<span>' + n.label + '</span>' + (n.count && b.unread ? '<span class="count">' + b.unread + '</span>' : '') + '</a>'; }).join('') +
       (u.role === 'admin' ? '<div class="nav-sep"></div><a href="/admin" target="_self">' + I('sliders') + '<span>Admin panel</span></a>' : '') + '</nav>' +
       '<div class="side-foot"><div class="meter-card" id="sideMeter"></div>' +
-      (u.plan.id === 'free' ? '<div class="upgrade">' + (b.offer && b.offer.eligible ? '<span class="pill">' + esc(b.offer.badge) + '</span>' : '') + '<b>Go Pro</b><span>Unlimited searches, 1,000 AI breakdowns and competitor alerts.</span><a class="btn sm" href="/app/plan' + (b.offer && b.offer.eligible ? '?coupon=' + encodeURIComponent(b.offer.code) : '') + '">' + I('crown') + 'Upgrade</a></div>' : '') + '</div>';
+      (u.plan.id === 'free' ? '<div class="upgrade">' + (b.offer && b.offer.eligible ? '<span class="pill">' + esc(b.offer.badge) + '</span>' : '') + '<b>Go Pro</b><span>Unlimited searches, 1,000 AI breakdowns and competitor alerts.</span><a class="btn sm" href="/app/plan' + (b.offer && b.offer.eligible ? '?coupon=' + encodeURIComponent(b.offer.code) : '') + '">' + I('crown') + 'Upgrade</a></div>' : '') +
+      (b.voosquare && b.voosquare.app_url ? '<a class="voo-part" href="' + esc(b.voosquare.app_url) + '" target="_blank" rel="noopener">Part of <b>VooSquare</b></a>' : '') + '</div>';
     $('#top').innerHTML = '<a class="m-brand" href="/app"><span class="mark">' + SV.MARK + '</span><span class="word">Spy<b>voo</b></span></a>' +
       '<form class="ask" id="topAsk" role="search"><svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="topQ" placeholder="Ask Spyvoo… “crypto ads in Brazil over 30 days”" autocomplete="off" aria-label="Search ads"><span class="kbd">/</span><button class="ai" type="submit">' + I('spark', ' width="14" height="14"') + 'Spy</button></form>' +
       '<div class="top-actions"><button class="tour-btn" type="button" id="tourBtn"><i>' + I('play', ' width="14" height="14"') + '</i><span class="lbl">How it works</span></button>' +
@@ -88,7 +89,7 @@
     SV.$$('.menu a', p).forEach(function (a) { a.addEventListener('click', SV.closePop); });
     $('#mt').onclick = function () { SV.setTheme(dark ? 'light' : 'dark'); SV.closePop(); };
     $('#mtour').onclick = function () { SV.closePop(); SV.tour.start(); };
-    $('#mlo').onclick = function () { SV.post('/api/auth/logout').then(function () { location.href = SV.state.boot.voosquare.enabled ? '/auth/voosquare/logout' : '/'; }); };
+    $('#mlo').onclick = function () { SV.post('/api/auth/logout').then(function () { location.href = SV.state.boot.voosquare.enabled && SV.state.boot.user.voo ? '/auth/voosquare/logout' : '/'; }); };
   }
 
   function welcome() {
@@ -109,7 +110,10 @@
       if (!quiet) {
         SV.render();
         var ob = b.user.onboarding || {};
-        if (!ob.welcome_done && !ob.tour_seen) setTimeout(welcome, 700);
+        // The welcome only greets people on Home: someone who arrived to pay (a plan picked on the pricing page),
+        // to open an ad or to join a team has the checkout or that page in front of them already.
+        if (/[?&]voo=linked/.test(location.search)) { var sp = new URLSearchParams(location.search); sp.delete('voo'); history.replaceState({}, '', location.pathname + (sp.toString() ? '?' + sp : '')); SV.toast('VooSquare connected. Log in with your Voo ID from now on.', { icon: 'check' }); }
+        if (!ob.welcome_done && !ob.tour_seen && location.pathname === '/app' && !/[?&](checkout|order)=/.test(location.search)) setTimeout(function () { if (!document.querySelector('.modal-wrap')) welcome(); }, 700);
       }
     });
   };
@@ -120,5 +124,5 @@
   });
   window.addEventListener('scroll', function () { var t = $('#top'); if (t) t.classList.toggle('scrolled', window.scrollY > 4); }, { passive: true });
 
-  SV.boot().catch(function (e) { $('#view').innerHTML = '<div class="empty"><h3>Couldn’t load Spyvoo</h3><p>' + esc(e.message) + '</p><button class="btn" onclick="location.reload()">Try again</button></div>'; });
+  SV.boot().catch(function (e) { $('#view').innerHTML = '<div class="empty"><h3>Couldn’t load Spyvoo</h3><p>' + esc(e.message) + '</p><button class="btn" type="button" id="bootRetry">Try again</button></div>'; var r = $('#bootRetry'); if (r) r.addEventListener('click', function () { location.reload(); }); });
 })();

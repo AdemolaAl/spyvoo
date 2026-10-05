@@ -49,12 +49,14 @@ async function createInvoice(order, user, coin) {
   const list = coins(order.method);
   const preferred = list.includes(coin) ? coin : undefined;
   if (mode() === 'sandbox') return { id: 'gv_sbx_' + order.ref, checkout_url: '/pay/gatevoo/' + encodeURIComponent(order.ref) + (preferred ? '?coin=' + preferred : ''), expires_at: new Date(Date.now() + 3600e3).toISOString() };
+  // Both Gatevoo contracts are sent: Spyvoo's (reference, amount{}, coins) and the Voo family one in VooSquare's
+  // docs/GATEVOO.md (order_id, amount_usd, assets, customer_email). Gatevoo ignores the fields it does not know.
   const inv = await api('POST', '/invoices', {
-    reference: order.ref,
-    amount: { value: order.amount_usd.toFixed(2), currency: 'USD' },
-    coins: list, preferred_coin: preferred,
+    reference: order.ref, order_id: order.ref,
+    amount: { value: order.amount_usd.toFixed(2), currency: 'USD' }, amount_usd: Number(order.amount_usd.toFixed(2)),
+    coins: list, assets: list, preferred_coin: preferred,
     description: 'Spyvoo · ' + order.item_name,
-    customer: { email: user.email, name: user.name || '' },
+    customer: { email: user.email, name: user.name || '' }, customer_email: user.email,
     success_url: config.appUrl + '/pay/callback?ref=' + encodeURIComponent(order.ref),
     cancel_url: config.appUrl + '/app/plan?cancelled=' + encodeURIComponent(order.ref),
     webhook_url: webhookUrl(),
@@ -67,10 +69,13 @@ async function createInvoice(order, user, coin) {
 
 async function getInvoice(id) { return api('GET', '/invoices/' + encodeURIComponent(id)); }
 
-// Signature header: "t=<unix seconds>,v1=<hex hmac-sha256 of `${t}.${raw body}`>".
+// Signature header, either form:
+//   "t=<unix seconds>,v1=<hex hmac-sha256 of `${t}.${raw body}`>"  (Spyvoo's docs/GATEVOO.md, replay window 5 minutes)
+//   "<hex hmac-sha256 of the raw body>"                             (the Voo family contract, Voo Connect's verifyGatevooSignature)
 function signatureOk(raw, header, now = Date.now()) {
   const secret = cfg().webhookSecret;
   if (!secret || !header) return false;
+  if (!/t=/.test(String(header))) return require(require('node:path').join(config.root, 'voo-connect')).verifyGatevooSignature(raw, header, secret);
   const parts = Object.fromEntries(String(header).split(',').map(x => x.trim().split('=')).filter(x => x.length === 2));
   const t = Number(parts.t); const v1 = String(parts.v1 || '');
   if (!t || !v1 || Math.abs(now / 1000 - t) > SIG_WINDOW_S) return false;
@@ -84,17 +89,19 @@ function sign(raw, t = Math.floor(Date.now() / 1000), secret = cfg().webhookSecr
 // Apply an invoice's state to its order. Safe to call many times (webhook, return page, "Check payment").
 function settle(inv, via = 'gatevoo') {
   if (!inv) return { ok: false, reason: 'No invoice' };
-  const ref = String(inv.reference || '');
+  const ref = String(inv.reference || inv.order_id || '');
   const o = db.one('SELECT * FROM orders WHERE ref = ? AND provider = \'gatevoo\'', ref);
   if (!o) return { ok: false, reason: 'Order not found' };
   if (o.provider_ref && inv.id && String(inv.id) !== o.provider_ref) return { ok: false, reason: 'Invoice does not match this order' };
   const pay = inv.payment || {};
-  const paidUsd = Number(inv.paid_usd != null ? inv.paid_usd : pay.amount_usd);
-  const coin = String(pay.coin || inv.coin || '');
+  const paidUsd = Number(inv.paid_usd != null ? inv.paid_usd : inv.paid_amount != null ? inv.paid_amount : pay.amount_usd);
+  const coin = String(pay.coin || inv.coin || inv.asset || '');
   const info = {
     coin: COINS[coin] ? coin : (coin || null), tx_hash: pay.tx_hash || inv.tx_hash || null,
     paid_usd: isFinite(paidUsd) ? paidUsd : null, paid_amount: pay.amount != null ? String(pay.amount) : null,
-    confirmations: pay.confirmations != null ? Number(pay.confirmations) : null, gv_status: String(inv.status || '')
+    confirmations: pay.confirmations != null ? Number(pay.confirmations) : null, gv_status: String(inv.status || ''),
+    // The paying wallet, when Gatevoo tells us: only ever sent to VooSquare as our own hash (fraud hint).
+    payer: typeof (pay.from || pay.from_address || pay.sender) === 'string' ? String(pay.from || pay.from_address || pay.sender).slice(0, 120) : null
   };
   const meta = { ...db.json(o.meta, {}), ...Object.fromEntries(Object.entries(info).filter(([, v]) => v != null && v !== '')) };
   if (o.status === 'paid') return { ok: true, order: o };

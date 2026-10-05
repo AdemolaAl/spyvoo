@@ -69,7 +69,22 @@ const bad = (t, d) => rows.push(['bad', t, d || '']);
 
   // VooSquare
   const voo = require('../src/services/voosquare');
-  voo.enabled() ? ok('VooSquare login on') : warn('VooSquare login off', 'Optional: VOO_ISSUER + VOO_CLIENT_ID + VOO_CLIENT_SECRET. Email login works without it.');
+  if (!config.voo.on) warn('VooSquare switched off (VOO_CONNECT=off)', 'Remove VOO_CONNECT or set it to on to use Voo ID login and events.');
+  else {
+    voo.enabled() ? ok('VooSquare: Continue with Voo ID on', config.voo.base + ' · callback ' + config.voo.redirectUri) : warn('VooSquare login off', 'Set VOO_BASE, VOO_CLIENT_ID and VOO_CLIENT_SECRET (Admin → Products → Spyvoo → Credentials in VooSquare). Email login works without it.');
+    voo.eventsOn() ? ok('VooSquare events and summary card on') : warn('VooSquare events off', 'Set VOO_API_KEY so plan payments reach VooSquare (affiliate commissions) and the dashboard card works.');
+    if (voo.eventsOn() && !config.voo.signalSecret) warn('VOO_SIGNAL_SECRET not set', 'Optional: a long random string (openssl rand -hex 32), set once and never changed. It hashes fraud hints.');
+    if (voo.enabled() && config.isProd && !/^https:\/\//.test(config.voo.redirectUri)) bad('VOO_REDIRECT_URI is not https', config.voo.redirectUri);
+  }
+  if (process.env.VOO_ISSUER || process.env.VOO_SERVICE_KEY || process.env.VOO_WEBHOOK_SECRET) warn('Old VooSquare variables found', 'VOO_ISSUER, VOO_SERVICE_KEY, VOO_WEBHOOK_SECRET and VOO_EVENTS_URL are no longer used. Use VOO_BASE, VOO_CLIENT_ID, VOO_CLIENT_SECRET, VOO_API_KEY (docs/VOOSQUARE.md).');
+  if (voo.enabled() && voo.eventsOn() && ping) {
+    // The kit's own self-test against VooSquare (changes nothing there).
+    const { execFileSync } = require('node:child_process');
+    try {
+      execFileSync(process.execPath, [require('node:path').join(config.root, 'voo-connect', 'check.js'), '--redirect-uri', config.voo.redirectUri, '--logout-uri', config.appUrl + '/', '--summary-url', config.appUrl + '/api/voosquare/summary'], { env: { ...process.env, VOO_BASE: config.voo.base }, stdio: 'pipe', timeout: 60000 });
+      ok('VooSquare self-test (voo-connect/check.js) passed');
+    } catch (e) { bad('VooSquare self-test failed', String(e.stdout || e.message).split('\n').filter(l => /FAIL/.test(l)).join('\n     ') || e.message); }
+  }
 
   const icon = { ok: '\x1b[32m✓\x1b[0m', warn: '\x1b[33m!\x1b[0m', bad: '\x1b[31m✗\x1b[0m' };
   console.log('\nSpyvoo launch check (' + config.env + ')\n');

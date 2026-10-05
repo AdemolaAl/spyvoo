@@ -80,21 +80,29 @@ const config = {
     webhookSecret: env('GATEVOO_WEBHOOK_SECRET')
   },
 
-  // VooSquare: one account for every Zedapex tool. Login switches to VooSquare when VOO_ISSUER and VOO_CLIENT_ID are set.
+  // VooSquare (Voo Connect kit in ./voo-connect): one account for every Zedapex tool. "Continue with Voo ID" turns on
+  // when VOO_BASE, VOO_CLIENT_ID and VOO_CLIENT_SECRET are set; events and the summary card need VOO_API_KEY.
+  // VOO_CONNECT=off switches everything off at once (feature flag) without removing the credentials.
   voo: {
-    issuer: env('VOO_ISSUER').replace(/\/+$/, ''),
+    on: bool('VOO_CONNECT', true),
+    base: env('VOO_BASE').replace(/\/+$/, ''),
+    serverBase: env('VOO_SERVER_BASE').replace(/\/+$/, ''),
     clientId: env('VOO_CLIENT_ID'),
     clientSecret: env('VOO_CLIENT_SECRET'),
-    redirectUri: env('VOO_REDIRECT_URI', env('APP_URL', env('RAILWAY_PUBLIC_DOMAIN') ? 'https://' + env('RAILWAY_PUBLIC_DOMAIN') : 'http://localhost:3000').replace(/\/+$/, '') + '/auth/voosquare/callback'),
-    serviceKey: env('VOO_SERVICE_KEY'),
-    webhookSecret: env('VOO_WEBHOOK_SECRET'),
-    eventsUrl: env('VOO_EVENTS_URL', 'https://api.voosquare.com/v1/events'),
-    homeUrl: env('VOO_HOME_URL', 'https://voosquare.com').replace(/\/+$/, '')
+    apiKey: env('VOO_API_KEY'),
+    signalSecret: env('VOO_SIGNAL_SECRET'),
+    redirectUri: env('VOO_REDIRECT_URI', env('APP_URL', env('RAILWAY_PUBLIC_DOMAIN') ? 'https://' + env('RAILWAY_PUBLIC_DOMAIN') : 'http://localhost:' + env('PORT', '3000')).replace(/\/+$/, '') + '/auth/voosquare/callback'),
+    widget: bool('VOO_WIDGET', true),
+    slug: 'spyvoo',
+    eventPrefix: 'sv',
+    flushMs: Number(env('VOO_FLUSH_MS', '5000')) || 5000
   },
 
   // Fill an empty database with sample ads so the dashboard is never empty on first launch.
   demoAds: bool('DEMO_ADS', true),
-  trustProxy: bool('TRUST_PROXY', true),
+  // Behind Railway's edge the last X-Forwarded-For entry is the visitor. Anywhere else the header is the visitor's own
+  // words, so it is ignored unless TRUST_PROXY=true (rate limits would otherwise be bypassed with a fake header).
+  trustProxy: bool('TRUST_PROXY', !!env('RAILWAY_ENVIRONMENT', '')),
   scheduler: bool('SCHEDULER', true)
 };
 

@@ -1,6 +1,7 @@
 'use strict';
 // Small server-rendered pages (notices, legal, shared boards, test checkouts) in the Spyvoo look.
 const { esc } = require('../lib/md');
+const vooApp = () => ((require('../config').voo.base) || 'https://voosquare.com') + '/app';
 
 const MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="26" y="27" width="12" height="7" rx="3" fill="#fff" opacity=".9"/><circle cx="20" cy="33" r="12" fill="#fff"/><circle cx="44" cy="33" r="12" fill="#fff"/><circle cx="21.5" cy="33" r="5.4" fill="#0A1638"/><circle cx="45.5" cy="33" r="5.4" fill="#0A1638"/><circle cx="23.3" cy="31" r="1.7" fill="#fff"/><circle cx="47.3" cy="31" r="1.7" fill="#fff"/></svg>';
 
@@ -12,7 +13,7 @@ function page(title, body, { wide = false, head = '', robots = 'noindex' } = {})
     '<link rel="stylesheet" href="/css/page.css">' + head + '</head><body>' +
     '<header class="pg-top"><a class="pg-brand" href="/"><span class="pg-mark">' + MARK + '</span><span>Spy<b>voo</b></span></a></header>' +
     '<main class="pg-main' + (wide ? ' wide' : '') + '">' + body + '</main>' +
-    '<footer class="pg-foot">© ' + new Date().getFullYear() + ' Zedapex Limited · <a href="/legal/terms">Terms</a> · <a href="/legal/privacy">Privacy</a> · <a href="/legal/refunds">Refunds</a></footer></body></html>';
+    '<footer class="pg-foot">© ' + new Date().getFullYear() + ' Zedapex Limited · <a href="' + esc(vooApp()) + '" target="_blank" rel="noopener">Part of VooSquare</a> · <a href="/legal/terms">Terms</a> · <a href="/legal/privacy">Privacy</a> · <a href="/legal/refunds">Refunds</a></footer></body></html>';
 }
 
 function notice(title, heading, text, status = '') {

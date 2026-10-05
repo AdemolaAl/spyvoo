@@ -14,6 +14,9 @@ Run `npm run check -- --ping` in the Railway shell. When it says **Ready to laun
 - [ ] Gatevoo **Test connection** says Connected; webhook URL pasted into Gatevoo; one real $1 test order (make a coupon)
 - [ ] Legal pages read through: `/legal/terms`, `/legal/privacy`, `/legal/refunds`, `/legal/acceptable-use`
 - [ ] Domain + `www` on HTTPS
+- [ ] VooSquare: Spyvoo product has SSO on and both Redirect URIs (`/auth/voosquare/callback` and `/`); `VOO_*` set;
+      `npm run check -- --ping` shows "VooSquare self-test passed"; one test affiliate link → Start free → test payment
+      shows the commission in VooSquare (docs/VOOSQUARE.md §7)
 
 ## Should do
 - [ ] Claude connected (`ANTHROPIC_API_KEY`): open an ad and check the breakdown reads well

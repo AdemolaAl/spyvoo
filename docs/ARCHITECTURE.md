@@ -42,11 +42,15 @@ src/
     account.js         plans, usage limits (402 + upgrade prompt), team seats
     payments.js        payment methods per country, coupons, quotes, checkout, fulfilment, renewals
     gatevoo.js         crypto checkout (live, or sandbox when PAYMENTS_DEMO is on)
-    voosquare.js       OIDC login, summary endpoint, signed events outbox
+    voosquare.js       Voo ID login + account linking, money/activity events, summary card (Voo Connect kit)
     mailer.js          13 templates, Resend / Brevo / Postmark / log
     settings.js        everything editable in /admin, stored as JSON rows over defaults
     scheduler.js       in-process jobs (below)
   routes/              auth, app (dashboard API), admin, public (website API), webhooks, pages, voosquare
+  lib/                 http (router, cookies, rate limits), auth (sessions, CSRF), csp (Content-Security-Policy with
+                       hashed inline scripts), urls (http(s)-only links/media from scraped ads), netguard (media
+                       downloads only to public hosts: SSRF guard), voo (the Voo Connect instance), security, tpl, md
+voo-connect/           VooSquare's Voo Connect kit, copied unchanged (never edit; copy again on a new version)
 public/
   css/                 app.css (dashboard), admin.css, auth.css, page.css (legal, notices, pricing)
   js/app/              dashboard SPA: core, art (animated people), cards, family slides, pages, detail, account, tour, main
@@ -66,7 +70,7 @@ content/legal/         terms, privacy, refunds, acceptable use (Markdown)
 | refresh | 1 hour | Recomputes days running, active/inactive and winner scores |
 | alerts | 30 min | New ads from followed advertisers, new results for saved searches |
 | billing | 1 hour | Renewal reminders, expiry downgrades after the grace period |
-| voosquare | 1 min | Sends queued VooSquare events (signed, retried 24 h) |
+| voosquare | 1 min | Closes finished search hours (search_run) and sends queued VooSquare events (the kit also sends every VOO_FLUSH_MS, retried with backoff) |
 | weekly | Mondays 08:00 UTC | Weekly winners report email |
 | cleanup | daily | Old sessions, tokens, expired orders, old job rows |
 
@@ -86,6 +90,7 @@ Set `SCHEDULER=false` to turn them off on an instance (for example a second web 
 - Passwords: scrypt. Sessions: random 32-byte tokens, stored hashed. CSRF: every state-changing API call needs the
   `x-sv: 1` header (browsers can't add it cross-site).
 - Saved API tokens (Apify) are encrypted with AES-256-GCM using a key derived from `APP_SECRET`.
-- Rate limits on signup, login, password reset, the public try-it search, AI and checkout (keyed on the real client IP that Railway's proxy appends).
+- Rate limits on signup, login, password reset, the public try-it search, coupon checks (30 per 10 min), quotes, AI (plus 200 plain-English searches per account per day) and checkout, keyed on the real client IP that Railway's proxy appends (the last `X-Forwarded-For` entry; ignored unless `TRUST_PROXY`). Browsing the library is paced per account (120 a minute, 3,000 a day).
+- The admin "Test scrape" respects the daily provider budget like scheduled runs.
 - Gatevoo webhooks are HMAC-checked and the invoice is re-read from the API before a plan switches on.
 - Admin actions are written to the audit log.

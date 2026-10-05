@@ -85,7 +85,9 @@ function enhance(req, res) {
   req.path = u.pathname.replace(/\/{2,}/g, '/');
   req.query = Object.fromEntries(u.searchParams);
   req.cookies = parseCookies(req.headers.cookie || '');
-  const fwd = config.trustProxy ? String(req.headers['x-real-ip'] || (req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean).pop() || '').trim() : ''; // the proxy appends the real client IP last; the first entry can be spoofed
+  // The proxy appends the real client IP last; earlier entries (and X-Real-IP when X-Forwarded-For is present) can be
+  // written by the visitor, so they never win.
+  const fwd = config.trustProxy ? String((req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean).pop() || req.headers['x-real-ip'] || '').trim().slice(0, 64) : '';
   req.ip = fwd || req.socket.remoteAddress || '';
   res.locals = {};
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -206,8 +208,19 @@ function rateLimit(name, max, windowMs) {
     if (b.n > max) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.');
   };
 }
+// Per account (falls back to the IP): for logged-in endpoints that could be used to copy the whole ad library.
+function rateLimitUser(name, max, windowMs) {
+  return (req) => {
+    const key = name + ':' + (req.user ? 'u' + req.user.id : req.ip);
+    const t = Date.now();
+    let b = buckets.get(key);
+    if (!b || b.reset < t) { b = { n: 0, reset: t + windowMs }; buckets.set(key, b); }
+    b.n++;
+    if (b.n > max) throw new HttpError(429, 'You’re going a bit fast. Wait a minute and try again.');
+  };
+}
 setInterval(() => { const t = Date.now(); for (const [k, b] of buckets) if (b.reset < t) buckets.delete(k); }, 60000).unref();
 
 function nonce() { return crypto.randomBytes(16).toString('base64'); }
 
-module.exports = { createApp, HttpError, rateLimit, nonce, MIME };
+module.exports = { createApp, HttpError, rateLimit, rateLimitUser, nonce, MIME };

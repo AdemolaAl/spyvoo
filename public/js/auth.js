@@ -32,6 +32,10 @@
     form.hidden = m === 'verify';
     var vs = $('#vsqBtn'), or = $('.or', auth);
     if (vs) { vs.hidden = !(site.voosquare && (m === 'up' || m === 'in' || m === 'invite')); if (or) or.hidden = vs.hidden; }
+    // With VooSquare on, new accounts are made with a Voo ID: the sign-up view is just the button.
+    var vooOnly = site.voosquare && m === 'up';
+    form.hidden = m === 'verify' || vooOnly; if (or && vooOnly) or.hidden = true;
+    if (vooOnly) $('#authSub').textContent = 'One free Voo ID for Spyvoo and every Voo tool. No card needed.';
     err.textContent = '';
     if (page && (m === 'up' || m === 'in' || m === 'forgot')) history.replaceState({}, '', '/' + ({ up: 'signup', in: 'login', forgot: 'forgot' }[m]) + location.search);
     var go = $('.auth-go', auth); if (go) go.disabled = m === 'up' && site.signups === false;
@@ -49,7 +53,7 @@
 
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-auth]');
-    if (t) { e.preventDefault(); var plan = t.getAttribute('data-plan'), iv = t.getAttribute('data-interval') === 'year' ? 'year' : 'month'; if (plan) { params.set('plan', plan); params.set('interval', iv); } if (window.__svUser) { location.href = plan ? '/app/plan?checkout=' + encodeURIComponent(plan) + '&interval=' + iv : '/app'; return; } open(t.dataset.auth); return; }
+    if (t) { e.preventDefault(); var plan = t.getAttribute('data-plan'), iv = t.getAttribute('data-interval') === 'year' ? 'year' : 'month'; if (plan) { params.set('plan', plan); params.set('interval', iv); } if (window.__svUser) { location.href = plan ? '/app/plan?checkout=' + encodeURIComponent(plan) + '&interval=' + iv : '/app'; return; } if (site.voosquare && t.dataset.auth === 'up') { vooGo(true); return; } open(t.dataset.auth); return; }
     if (e.target.closest('[data-close]') && !auth.hidden) close();
   });
   document.addEventListener('keydown', function (e) {
@@ -138,8 +142,17 @@
       if (mode === 'reset' && /expired|used/i.test(x.message)) err.innerHTML = err.textContent + ' <a href="/forgot" data-swap="forgot">Send a new link</a>';
     }).then(function () { busy(false); });
   });
+  // "Continue with Voo ID": VooSquare login (sign-up view for "Start free"). The affiliate click kept in the voo_attr
+  // cookie is added by the server; the plan someone picked comes back as the page to open.
+  function vooGo(signup) {
+    var q = new URLSearchParams(), to = nextUrl;
+    if (params.get('plan')) to = '/app/plan?checkout=' + encodeURIComponent(params.get('plan')) + '&interval=' + (params.get('interval') === 'year' ? 'year' : 'month');
+    if (mode === 'invite' && params.get('token')) to = '/invite?token=' + encodeURIComponent(params.get('token'));
+    if (to) q.set('return_to', to); if (signup) q.set('signup', '1');
+    location.href = '/auth/voosquare' + (q.toString() ? '?' + q : '');
+  }
   var vs = $('#vsqBtn');
-  if (vs) vs.addEventListener('click', function () { var q = new URLSearchParams(); if (nextUrl) q.set('return_to', nextUrl); if (mode === 'up') q.set('signup', '1'); location.href = '/auth/voosquare' + (q.toString() ? '?' + q : ''); });
+  if (vs) vs.addEventListener('click', function () { vooGo(mode === 'up'); });
   var fg = $('#forgot'); if (fg) fg.addEventListener('click', function (e) { e.preventDefault(); setMode('forgot'); });
   var bl = $('#backLogin'); if (bl) bl.addEventListener('click', function (e) { e.preventDefault(); setMode('in'); });
   auth.addEventListener('click', function (e) { var a = e.target.closest('[data-swap]'); if (a) { e.preventDefault(); setMode(a.dataset.swap); } });

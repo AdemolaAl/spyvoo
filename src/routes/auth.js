@@ -1,5 +1,6 @@
 'use strict';
-// Email + password accounts (until VooSquare login is switched on), email verification, password reset and team invites.
+// Email + password accounts (sign-up until VooSquare login is switched on; log in always), email verification,
+// password reset and team invites.
 const config = require('../config');
 const db = require('../db');
 const auth = require('../lib/auth');
@@ -32,7 +33,7 @@ function sendVerify(u) {
   const raw = makeToken(u.id, 'verify', 72);
   return mailer.send(u.email, 'verify-email', { name: first(u.name), verify_url: config.appUrl + '/verify?token=' + raw });
 }
-const vooBlock = () => { if (voo.enabled()) throw new HttpError(403, 'Spyvoo uses your VooSquare account now.', { login_url: '/auth/voosquare' }); };
+const vooBlock = () => { if (voo.enabled()) throw new HttpError(403, 'New Spyvoo accounts are made with your Voo ID.', { login_url: '/auth/voosquare?signup=1' }); };
 const out = u => ({ user: account.publicUser(u) });
 
 module.exports = function (app) {
@@ -69,8 +70,8 @@ module.exports = function (app) {
     const b = req.body || {};
     const email = String(b.email || '').trim().toLowerCase();
     const u = db.one('SELECT * FROM users WHERE email = ?', email);
-    // Admins keep a password login even after VooSquare is on (break-glass if VooSquare is down).
-    if (voo.enabled() && !(u && u.role === 'admin')) vooBlock();
+    // Email + password login stays for everyone who has a password (accounts made before Voo ID, and admins as a
+    // break-glass if VooSquare is down). New accounts are made with Voo ID once VooSquare is on.
     if (!u || !u.password_hash || !verifyPassword(String(b.password || ''), u.password_hash)) throw new HttpError(401, 'That email and password don’t match.');
     if (u.suspended) throw new HttpError(403, 'This account is suspended. Contact support@spyvoo.com.');
     auth.startSession(req, res, u);
@@ -80,10 +81,10 @@ module.exports = function (app) {
   app.post('/api/auth/logout', (req, res) => { auth.endSession(req, res); return { ok: true }; });
 
   app.post('/api/auth/forgot', mailLimit, req => {
-    vooBlock();
     const email = String((req.body || {}).email || '').trim().toLowerCase();
     const u = email && db.one('SELECT * FROM users WHERE email = ?', email);
-    if (u && !u.suspended) {
+    // Only accounts that have a password can reset it (a Voo ID account logs in through VooSquare).
+    if (u && !u.suspended && u.password_hash) {
       const raw = makeToken(u.id, 'reset', 2);
       mailer.send(u.email, 'password-reset', { name: first(u.name), reset_url: config.appUrl + '/reset?token=' + raw });
     }

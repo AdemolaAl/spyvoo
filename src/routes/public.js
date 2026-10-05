@@ -49,7 +49,8 @@ module.exports = function (app) {
   });
 
   app.get('/api/public/countries', () => ({ items: countries.list() }));
-  app.get('/api/public/coupon', req => {
+  // Codes are not secret-grade: cap guessing.
+  app.get('/api/public/coupon', rateLimit('coupon', 30, 600e3), req => {
     const r = require('../services/payments').coupon(String(req.query.code || '').slice(0, 40), { plan: req.query.plan ? String(req.query.plan) : undefined });
     const c = r.ok ? r.coupon : null;
     return c ? { code: c.code, percent: c.percent, amount_off: c.amount_off } : { code: null, reason: r.reason };

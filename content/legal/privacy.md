@@ -21,7 +21,7 @@ To run your account and plan, send the emails you expect (receipts, alerts, pass
 
 ## Who we share it with
 
-Only service providers that help us run Spyvoo, under contract: hosting (Railway), email delivery, AI processing (Anthropic, for ad analysis; ad text and transcripts only, not your personal details), payments (Gatevoo) and, if you use it, VooSquare (Zedapex's shared login). We share data with authorities only when the law requires it.
+Only service providers that help us run Spyvoo, under contract: hosting (Railway), email delivery, AI processing (Anthropic, for ad analysis; ad text and transcripts only, not your personal details), payments (Gatevoo) and, if you use it, VooSquare (Zedapex's shared login). With a Voo ID, Spyvoo tells VooSquare about your plan payments (amount, plan, country, refunds) and your activity in short form (how many searches per hour, which advertiser's ad you saved, that you made a board) for your own VooSquare dashboard, and so any referral or affiliate who introduced you can be credited; never your searches' words, your boards' names or your email. We share data with authorities only when the law requires it.
 
 ## How long we keep it
 

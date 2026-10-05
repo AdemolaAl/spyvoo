@@ -11,7 +11,7 @@ const payments = require('../services/payments');
 const settings = require('../services/settings');
 const media = require('../services/media');
 const countries = require('../lib/countries');
-const { HttpError, rateLimit } = require('../lib/http');
+const { HttpError, rateLimit, rateLimitUser } = require('../lib/http');
 const { hashPassword, verifyPassword } = require('../lib/security');
 
 const DAY = 864e5;
@@ -34,6 +34,11 @@ function offerOut(user) {
 
 module.exports = function (app) {
   const aiLimit = rateLimit('ai', 30, 60e3);
+  // Plain-English search calls Claude without using a plan quota: cap it per account per day as well.
+  const aiSearchDay = rateLimitUser('ai-search-day', 200, 864e5);
+  // Browsing the library is free within a search, so cap the pace per account: a person scrolls, a script copies.
+  const browseLimit = rateLimitUser('browse', 120, 60e3);
+  const deepLimit = rateLimitUser('browse-day', 3000, 864e5);
 
   app.get('/api/app/bootstrap', req => {
     auth.needUser(req);
@@ -67,7 +72,7 @@ module.exports = function (app) {
   });
 
   app.get('/api/app/search', req => {
-    auth.needUser(req);
+    auth.needUser(req); browseLimit(req); deepLimit(req);
     const f = filtersOf(req.query);
     f.offset = Math.max(0, Math.floor(Number(f.offset) || 0));
     // One search = one new question (keywords, countries, niche, website). Refining it with other filters, sorting
@@ -77,6 +82,7 @@ module.exports = function (app) {
       const prev = lastSearch.get(req.user.id);
       if (!prev || prev.k !== k || Date.now() - prev.t > 30 * 60e3) {
         account.use(req.user, 'searches');
+        require('../services/voosquare').countSearch(req.user);
         if (lastSearch.size > 20000) lastSearch.clear();
         lastSearch.set(req.user.id, { k, t: Date.now() });
       }
@@ -86,14 +92,14 @@ module.exports = function (app) {
   });
 
   app.post('/api/app/ai-search', aiLimit, async req => {
-    auth.needUser(req);
+    auth.needUser(req); aiSearchDay(req);
     const text = String((req.body || {}).text || '').trim();
     if (!text) throw new HttpError(400, 'Type what you’re looking for.');
     return { filters: await ai.parseSearch(text) };
   });
 
   app.get('/api/app/ads/:id', req => {
-    auth.needUser(req);
+    auth.needUser(req); browseLimit(req); deepLimit(req);
     const d = ads.detail(req.params.id);
     if (!d) throw new HttpError(404, 'This ad is no longer available.');
     db.run('INSERT INTO views (user_id, ad_id, viewed_at) VALUES (?, ?, ?) ON CONFLICT(user_id, ad_id) DO UPDATE SET viewed_at = excluded.viewed_at', req.user.id, d.id, db.now());
@@ -136,15 +142,16 @@ module.exports = function (app) {
     const a = ads.get(req.params.id);
     if (!a) throw new HttpError(404, 'Ad not found');
     const m = db.one("SELECT * FROM ad_media WHERE ad_id = ? AND (? = 0 OR id = ?) ORDER BY CASE type WHEN 'video' THEN 0 ELSE 1 END, position LIMIT 1", a.id, Number((req.body || {}).media_id) || 0, Number((req.body || {}).media_id) || 0);
-    if (!m || !(m.storage_key || m.source_url)) throw new HttpError(404, 'This file isn’t saved yet. Try again in a few minutes.');
+    const remote = require('../lib/urls').httpUrl(m && m.source_url);
+    if (!m || !(m.storage_key || remote)) throw new HttpError(404, 'This file isn’t saved yet. Try again in a few minutes.');
     account.use(req.user, 'downloads');
-    const src = m.storage_key || m.source_url;
+    const src = m.storage_key || remote;
     const filename = 'spyvoo-' + a.library_id + '-' + m.id + ((/\.(mp4|webm|mov|jpe?g|png|webp|gif)$/i.exec(String(src).split('?')[0]) || [])[0] || (m.type === 'video' ? '.mp4' : '.jpg'));
-    return { url: m.storage_key ? media.downloadUrl(m.storage_key, filename) : m.source_url, filename };
+    return { url: m.storage_key ? require('../lib/urls').mediaUrl(media.downloadUrl(m.storage_key, filename)) : remote, filename };
   });
 
   app.get('/api/app/advertisers/:id', req => {
-    auth.needUser(req);
+    auth.needUser(req); browseLimit(req);
     const v = ads.advertiser(req.params.id);
     if (!v) throw new HttpError(404, 'Advertiser not found');
     return { advertiser: v, following: library.isFollowing(req.user, v.id) };
@@ -187,7 +194,7 @@ module.exports = function (app) {
     auth.needUser(req);
     return { plans: account.plans(), current: account.publicUser(req.user).plan, meter: account.meter(req.user), methods: payments.methodsFor(req.user), orders: payments.ordersFor(req.user), offer: offerOut(req.user), country: req.user.country };
   });
-  app.post('/api/app/quote', req => { auth.needUser(req); const b = req.body || {}; return payments.quote(req.user, b.plan, b.interval, b.coupon); });
+  app.post('/api/app/quote', rateLimitUser('quote', 60, 600e3), req => { auth.needUser(req); const b = req.body || {}; return payments.quote(req.user, b.plan, b.interval, b.coupon); });
   app.post('/api/app/checkout', rateLimit('checkout', 20, 3600e3), async req => { auth.needUser(req); return payments.checkout(req.user, req.body || {}); });
   app.get('/api/app/orders/:ref', async req => {
     auth.needUser(req);

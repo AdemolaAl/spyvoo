@@ -47,6 +47,10 @@ are on it.
 - **Coupons**: percent or amount off, limited to plans, monthly/yearly, first purchase only, max uses, end date.
 - **Orders**: crypto orders confirm on their own; **Check** asks Gatevoo now; **Mark paid** for a bank transfer once the
   money is in (the plan starts and a receipt is emailed).
+- **Refund** (paid orders): record that you sent money back (send it yourself first). The plan ends unless another paid
+  order covers it, and VooSquare is told (`refund`): the affiliate's commission is **not** reversed.
+- **Chargeback** (paid or refunded orders): the payment was disputed and taken back. The plan ends and VooSquare reverses
+  the affiliate's commission on that payment. Filter the list with **Refunded** / **Chargebacks**.
 
 ## Offer & Voo family
 - **Offer**: badge, title, text, coupon code, optional countdown end date, plans. Shows on the website bar, pricing page,

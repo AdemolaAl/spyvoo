@@ -66,7 +66,8 @@
   A.load = function (view, path, draw) {
     A.loading(view);
     return SV.get(path).then(function (d) { if (document.body.contains(view)) draw(d); }).catch(function (e) {
-      view.innerHTML = '<div class="empty">' + SV.scene('spy', 'think') + '<h3>Couldn’t load this page</h3><p>' + esc(e.message) + '</p><button class="btn" onclick="SV.render()">Try again</button></div>';
+      view.innerHTML = '<div class="empty">' + SV.scene('spy', 'think') + '<h3>Couldn’t load this page</h3><p>' + esc(e.message) + '</p><button class="btn" type="button" data-retry>Try again</button></div>';
+      var rt = view.querySelector('[data-retry]'); if (rt) rt.addEventListener('click', function () { SV.render(); });
     });
   };
   A.busy = function (btn, p) {
@@ -104,7 +105,7 @@
     return o;
   };
   A.tag = function (text, tone) { return '<span class="tag2 ' + (tone || '') + '">' + esc(text) + '</span>'; };
-  A.status = function (s) { return A.tag(s, { done: 'mint', paid: 'mint', active: 'mint', live: 'mint', running: 'blue', pending: 'orange', sandbox: 'orange', soon: 'orange', failed: 'red', expired: 'red', off: '', inactive: '' }[s] || ''); };
+  A.status = function (s) { return A.tag(String(s).replace(/_/g, ' '), { done: 'mint', paid: 'mint', active: 'mint', live: 'mint', running: 'blue', pending: 'orange', sandbox: 'orange', soon: 'orange', refunded: 'orange', failed: 'red', expired: 'red', charged_back: 'red', off: '', inactive: '' }[s] || ''); };
   // {"found":12,"skipped":"provider not connected"} → "Found 12 · Skipped: provider not connected"
   A.human = function (r) {
     if (r == null || r === '') return '';
