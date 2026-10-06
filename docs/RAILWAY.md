@@ -10,6 +10,7 @@ Everything else can be switched on later from the admin panel or by adding a var
 | `APP_SECRET` | Run `openssl rand -hex 32` (or any 64 random characters) | Required |
 | `APIFY_TOKEN` | console.apify.com → Settings → Integrations | Real ads (without it, sample ads show) |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys | AI breakdowns, scripts, plain-English search (basic mode works without) |
+| `OPENROUTER_API_KEY` (instead of Anthropic) | openrouter.ai → Keys | The same AI features on any model; see "Use OpenRouter" below |
 | `MAIL_API_KEY` | resend.com (recommended), brevo.com or postmarkapp.com | Emails |
 | `GATEVOO_API_KEY` + `GATEVOO_WEBHOOK_SECRET` | Gatevoo dashboard | Taking money |
 | `VOO_BASE`, `VOO_CLIENT_ID`, `VOO_CLIENT_SECRET`, `VOO_API_KEY`, `VOO_SIGNAL_SECRET` | VooSquare → Admin → Products → Spyvoo → Credentials (signal secret: `openssl rand -hex 32`) | Continue with Voo ID, affiliate commissions, VooSquare dashboard card (docs/VOOSQUARE.md) |
@@ -54,6 +55,32 @@ PAYMENTS_DEMO=false
 
 Leave the rest empty. Save; Railway redeploys.
 
+### Use OpenRouter instead of Claude direct (optional)
+
+OpenRouter lets Spyvoo's AI run on almost any model (Claude, GPT, Gemini, Llama…) with one key and one bill.
+Claude direct (`ANTHROPIC_API_KEY`) stays the default; nothing changes unless you switch.
+
+1. Make an account at [openrouter.ai](https://openrouter.ai), add some credit, then **Keys → Create key**.
+2. On Railway → your service → **Variables**, add:
+   ```
+   AI_PROVIDER=openrouter
+   OPENROUTER_API_KEY=sk-or-...
+   OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
+   # optional, tried in order when the main model is down or busy:
+   OPENROUTER_FALLBACK_MODELS=openai/gpt-4o-mini
+   ```
+   Or skip the variables and do it in **Admin → Ad data & AI → AI provider** (the key is stored encrypted, only its
+   last 4 characters are ever shown, and switching provider means typing the key again).
+3. **Pick a model**: copy its id from [openrouter.ai/models](https://openrouter.ai/models), e.g.
+   `anthropic/claude-sonnet-4.5` (the default) or `openai/gpt-4o-mini` (much cheaper).
+4. Press **Test AI** in the admin, or run `npm run check -- --ping`.
+
+**Costs.** You pay per token at the price shown on each model's page, from prepaid OpenRouter credit. The default
+`anthropic/claude-sonnet-4.5` is $3 per million input tokens and $15 per million output, so one ad breakdown costs
+about 1 cent (roughly 3 times Claude Haiku direct). For a lot of traffic pick a cheaper model. Today's AI calls,
+tokens and cost are shown in **Admin → Ad data & AI**, and the limits (200 AI searches a day per account, AI
+breakdowns per plan) work the same with every provider.
+
 ## 4. Domain (5 min)
 
 Pick one address and redirect the other: in Cloudflare add a Redirect Rule `www.spyvoo.com/*` → `https://spyvoo.com/$1` (301), so logins don't split across two sites.
@@ -75,7 +102,7 @@ in [EMAILS.md](EMAILS.md).
 1. Open `https://spyvoo.com/login`, log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`, then go to `/admin`.
 2. **Overview → System health** should be green for Ad data, AI, Emails and Payments.
 3. **Ad data & AI → Test scrape**: type `online course`, country `IN`, press **Run test**. You should see ads.
-4. **Payments → Test connection** (Gatevoo) should say "Connected". Copy the webhook URL into Gatevoo.
+4. **Payments → Test payment connection** (Gatevoo) should say "Connected". If not, it says why (docs/PAYMENTS_CHECKLIST.md). Copy the webhook URL into Gatevoo.
 5. **Emails → Send me this email** on `welcome`. Check your inbox (and spam the first time).
 6. **Tracking rules**: edit the five examples or import your own CSV. Each rule runs on its own schedule.
 7. When real ads have arrived, **Ads manager → Remove sample ads**.

@@ -17,10 +17,11 @@ checkout. The money goes straight to the Zedapex wallet, and orders activate on 
    ```
    GATEVOO_API_KEY=gv_live_...
    GATEVOO_WEBHOOK_SECRET=...
-   # Optional, only if Gatevoo's API lives somewhere else:
-   GATEVOO_API_URL=https://api.gatevoo.com/v1
+   # Optional, only if Gatevoo's API lives somewhere else (default https://gatevoo.com/api/v1):
+   GATEVOO_API_URL=https://gatevoo.com/api/v1
    ```
-4. Open **Admin → Payments** and press **Test connection**. It should say "Connected".
+4. Open **Admin → Payments** and press **Test payment connection**. It should say "Connected … API key accepted".
+   If not, it says exactly why (see [PAYMENTS_CHECKLIST.md](PAYMENTS_CHECKLIST.md)).
 5. Pick the coins in **Admin → Payments → Payment methods → Crypto** (USDT_TRC20, BTC or both). Switching the method off hides it.
 
 ## 2. How a payment flows
@@ -47,12 +48,12 @@ show the coin, the amount, and a link to the transaction on Tronscan or mempool.
 
 ## 3. API contract Gatevoo must provide
 
-Base URL: `GATEVOO_API_URL` (default `https://api.gatevoo.com/v1`). Every request sends
+Base URL: `GATEVOO_API_URL` (default `https://gatevoo.com/api/v1`, the address the other Voo apps use). Every request sends
 `Authorization: Bearer <GATEVOO_API_KEY>`. Responses are JSON, either the object itself or wrapped in `{ "data": ... }`.
 Errors use a non-2xx status with `{ "error": { "message": "..." } }`.
 
 ### `GET /me`
-Used by "Test connection". Returns `{ "name": "Zedapex" }` (any 2xx means the key works; 401 means a bad key).
+Used by "Test payment connection". Returns `{ "name": "Zedapex" }` or `{ "merchant": { "name": "Zedapex" } }` (any 2xx means the key works; 401 means a bad key).
 
 ### `POST /invoices`
 Header `Idempotency-Key: spyvoo-<order ref>`: the same key must return the same invoice.
@@ -105,7 +106,7 @@ which differs from the one above. Spyvoo accepts both, so it works with either:
 | Webhook body | `{ data: { reference } }` | `{ type: "invoice.paid", invoice: { id, order_id, … } }` |
 | Signature | `t=…,v1=…` (HMAC of `t.body`) | plain lowercase hex HMAC-SHA256 of the raw body (Voo Connect `verifyGatevooSignature`) |
 
-With the family contract, set `GATEVOO_API_URL=https://<gatevoo host>/api/v1` (Spyvoo appends `/invoices`, `/me`).
+With the family contract, `GATEVOO_API_URL` is `https://gatevoo.com/api/v1` (the default; Spyvoo appends `/invoices`, `/me`). A bare `https://gatevoo.com` gets `/api/v1` added.
 Either way the webhook only triggers a fresh `GET` of the invoice; the order activates only when it is `paid` and the USD
 received covers the order. Each confirmed payment is then reported to VooSquare as a `spend` (docs/VOOSQUARE.md);
 Gatevoo itself never reports Spyvoo's payments.

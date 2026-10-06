@@ -25,6 +25,9 @@ html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--ink); font: 500 15px/1.5 var(--body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* iPhone Safari zooms the whole page in when a text field under 16px gets focus (and it stays zoomed).
+   Every typing field is 16px or larger; pinch-zoom stays allowed for accessibility. */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea { font-size: max(16px, 1em); }
 button { cursor: pointer; }
 img { max-width: 100%; display: block; }
 h1, h2, h3, h4 { font-family: var(--display); letter-spacing: -.03em; line-height: 1.08; margin: 0; text-wrap: balance; }
@@ -83,7 +86,7 @@ h1, h2, h3, h4 { font-family: var(--display); letter-spacing: -.03em; line-heigh
 .ask { flex: 1; max-width: 680px; position: relative; display: flex; align-items: center; gap: 10px; background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; padding: 0 8px 0 14px; height: 50px; box-shadow: var(--shadow); transition: border-color .2s, box-shadow .2s; }
 .ask:focus-within { border-color: var(--blue); box-shadow: 0 0 0 5px color-mix(in srgb, var(--blue) 16%, transparent), var(--shadow); }
 .ask svg.lens { width: 20px; height: 20px; color: var(--blue); flex: 0 0 auto; }
-.ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-weight: 600; font-size: 15px; height: 100%; }
+.ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-weight: 600; font-size: 16px; height: 100%; }
 .ask .ai { display: inline-flex; align-items: center; gap: 6px; font: 800 11.5px/1 var(--body); color: #fff; background: var(--grad-loop); background-size: 200% auto; animation: shine 4s linear infinite; border-radius: 10px; padding: 8px 10px; border: 0; }
 .ask .kbd { font: 600 11px/1 var(--mono); color: var(--faint); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .top-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
@@ -317,7 +320,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .drawer { width: min(1020px, 100%); height: 100%; background: var(--bg); overflow-y: auto; animation: slideIn .45s cubic-bezier(.2, .9, .25, 1) both; box-shadow: var(--shadow-lg); position: relative; overscroll-behavior: contain; }
 @keyframes slideIn { from { transform: translateX(60px); opacity: 0 } }
 .modal-wrap { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(6, 11, 30, .55); backdrop-filter: blur(8px); animation: fadeIn .2s both; }
-.modal { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--card); border-radius: 28px; padding: 26px; box-shadow: var(--shadow-lg); animation: popIn .35s cubic-bezier(.2, .9, .3, 1.15) both; position: relative; }
+.modal { width: min(520px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; overflow-x: hidden; background: var(--card); border-radius: 28px; padding: 26px; box-shadow: var(--shadow-lg); animation: popIn .35s cubic-bezier(.2, .9, .3, 1.15) both; position: relative; }
 .modal h2 { font-size: 26px; margin-bottom: 6px; }
 .modal .x, .drawer .x { position: absolute; right: 16px; top: 16px; width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; z-index: 5; transition: transform .3s; }
 .modal .x:hover, .drawer .x:hover { transform: rotate(90deg); }
@@ -443,6 +446,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .meters .m b { font: 800 22px/1 var(--display); }
 .meters .m small { display: block; color: var(--mut); font-weight: 700; margin: 4px 0 10px; font-size: 12.5px; }
 .methods { display: grid; gap: 8px; }
+.pay-err { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--coral) 12%, var(--card)); color: var(--ink); font-weight: 700; font-size: 13.5px; }
 .method { display: flex; gap: 12px; align-items: center; padding: 13px; border-radius: 16px; border: 1.5px solid var(--line); cursor: pointer; transition: .2s; }
 .method:has(input:checked) { border-color: var(--blue); background: var(--blue-l); }
 .method input { accent-color: var(--blue); width: 18px; height: 18px; }
@@ -458,6 +462,30 @@ textarea.input { min-height: 90px; resize: vertical; }
 .status { font: 800 11px/1 var(--body); text-transform: uppercase; letter-spacing: .06em; padding: 5px 8px; border-radius: 999px; }
 .status.paid { background: color-mix(in srgb, var(--mint) 18%, transparent); color: #0B8A66; }
 .status.pending { background: color-mix(in srgb, var(--orange) 18%, transparent); color: #9A5B00; }
+.status.review { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue-d); border: 0; cursor: pointer; }
+.status.rejected, .status.expired { background: color-mix(in srgb, var(--coral) 12%, transparent); color: #B3262B; }
+.rej-note { margin: -4px 0 8px 52px; font-size: 13px; font-weight: 600; color: #B3262B; }
+.pm-ic { width: 36px; height: 36px; flex: 0 0 auto; border-radius: 11px; display: grid; place-items: center; background: var(--blue-l); color: var(--blue); }
+.pm-ic svg { width: 19px; height: 19px; }
+.pay-amount { display: grid; gap: 4px; justify-items: start; margin-top: 14px; padding: 16px; border-radius: 18px; background: var(--card-2, var(--blue-l)); border: 1.5px solid var(--line); }
+.pay-amount b { font: 800 30px/1.1 var(--display); letter-spacing: -.03em; overflow-wrap: anywhere; }
+.pay-amount small { font-weight: 700; color: var(--mut); font-size: 13px; }
+.pay-amount .btn { margin-top: 6px; }
+.pay-rows { display: grid; gap: 8px; margin-top: 12px; }
+.pay-row { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border: 1.5px solid var(--line); border-radius: 14px; }
+.pay-row span { flex: 1; min-width: 0; display: grid; }
+.pay-row small { font-size: 12px; font-weight: 800; color: var(--mut); }
+.pay-row b { font-weight: 800; overflow-wrap: anywhere; }
+.pay-row .btn { flex: 0 0 auto; }
+.pay-ins { white-space: pre-wrap; font-weight: 600; margin: 12px 0 0; color: var(--ink-2); }
+.pay-proof { margin-top: 16px; padding-top: 14px; border-top: 1.5px dashed var(--line); display: grid; gap: 10px; }
+.pay-proof h3 { font-size: 17px; margin: 0; }
+.pay-state { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: var(--blue-l); font-weight: 700; font-size: 14px; }
+.pay-state svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--blue); }
+.file-pick { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1.5px dashed var(--line); border-radius: 14px; cursor: pointer; font-weight: 700; color: var(--ink-2); min-width: 0; }
+.file-pick svg { width: 20px; height: 20px; flex: 0 0 auto; }
+.file-pick span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .status.failed { background: color-mix(in srgb, var(--coral) 16%, transparent); color: #B3262B; }
 
 /* ---------- Voo family slides ---------- */

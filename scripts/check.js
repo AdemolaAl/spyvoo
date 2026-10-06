@@ -1,7 +1,7 @@
 'use strict';
 // Launch readiness check. Prints what works, what is optional and what blocks a real launch.
 // Usage: npm run check          (exit code 1 if something blocks launch)
-//        npm run check -- --ping (also calls Apify, Claude and Gatevoo to prove the keys work)
+//        npm run check -- --ping (also calls Apify, the AI provider and Gatevoo to prove the keys work)
 const fs = require('node:fs');
 const config = require('../src/config');
 const db = require('../src/db');
@@ -33,16 +33,17 @@ const bad = (t, d) => rows.push(['bad', t, d || '']);
   const demoAds = (() => { try { return db.one("SELECT COUNT(*) n FROM ads WHERE source = 'demo'").n; } catch { return 0; } })();
   if (demoAds && p.configured()) warn(demoAds + ' sample ads are live', 'Remove them in Admin → Ads manager once real ads arrive.');
 
-  // AI
-  if (config.ai.key) {
-    ok('AI: Claude (' + config.ai.model + ')');
+  // AI (Claude direct, OpenRouter or OpenAI: AI_PROVIDER or Admin → Ad data & AI)
+  const llm = require('../src/services/llm');
+  const air = (() => { try { return llm.resolve(); } catch (e) { return null; } })();
+  if (air && air.key) {
+    ok('AI: ' + air.label + ' (' + air.model + (air.fallbacks.length ? ', fallbacks ' + air.fallbacks.join(', ') : '') + ')');
     if (ping) {
-      try {
-        const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': config.ai.key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.model, max_tokens: 5, messages: [{ role: 'user', content: 'Say ok' }] }) });
-        r.ok ? ok('Claude ping') : bad('Claude ping', 'HTTP ' + r.status + ' ' + (await r.text()).slice(0, 160));
-      } catch (e) { bad('Claude ping', e.message); }
+      try { const r = await llm.complete({ system: 'Reply with the single word: ok', messages: [{ role: 'user', content: 'Say ok' }], maxTokens: 5, feature: 'check' }); ok(air.label + ' ping', 'answered with ' + r.model); }
+      catch (e) { bad(air.label + ' ping', e.message); }
     }
-  } else warn('AI: basic mode', 'Set ANTHROPIC_API_KEY for real AI breakdowns, scripts and plain-English search.');
+  } else if (air && air.provider !== 'anthropic') warn('AI: ' + air.label + ' has no key (basic mode)', 'Set ' + air.envKey + ' (or save the key in Admin → Ad data & AI), or remove AI_PROVIDER to go back to Claude.');
+  else warn('AI: basic mode', 'Set ANTHROPIC_API_KEY (Claude) or AI_PROVIDER=openrouter + OPENROUTER_API_KEY for real AI breakdowns, scripts and plain-English search.');
   config.ai.transcribeKey ? ok('Video transcripts on') : warn('Video transcripts off', 'Optional: TRANSCRIBE_API_KEY (OpenAI Whisper).');
 
   // Media
@@ -61,10 +62,11 @@ const bad = (t, d) => rows.push(['bad', t, d || '']);
   // Payments
   const gv = require('../src/services/gatevoo');
   if (gv.mode() === 'live') {
-    ok('Payments: Gatevoo live', 'Webhook: ' + gv.webhookUrl());
+    ok('Payments: Gatevoo live', 'API: ' + config.gatevoo.apiUrl + ' · Webhook: ' + gv.webhookUrl());
+    { const le = gv.lastError(); if (le && !le.resolved) bad('Last crypto checkout failed', le.reason); }
     if (ping) { const r = await gv.ping(); (r.ok ? ok : bad)('Gatevoo ping', r.message); }
   } else if (gv.mode() === 'sandbox') (config.isProd ? bad : warn)('Payments: Gatevoo sandbox', 'Set GATEVOO_API_KEY and GATEVOO_WEBHOOK_SECRET to take real money.');
-  else bad('No way to take payments', 'Set GATEVOO_API_KEY and GATEVOO_WEBHOOK_SECRET.');
+  else bad('No way to take payments', gv.status().missing.join(', ') + '. Set GATEVOO_API_KEY and GATEVOO_WEBHOOK_SECRET.');
   if (config.pay.demo) (config.isProd ? bad : warn)('PAYMENTS_DEMO is on', 'Anyone can get a paid plan free. Set PAYMENTS_DEMO=false.');
 
   // VooSquare

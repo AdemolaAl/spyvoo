@@ -1,27 +1,24 @@
 'use strict';
 // AI features: ad breakdown, video transcript, "Make it mine" scripts, plain-English search and niche reports.
-// Uses Claude (ANTHROPIC_API_KEY). Without a key, a rule-based "basic" breakdown keeps every screen working.
+// Uses the AI provider set in Admin → Ad data & AI or AI_PROVIDER: Claude direct (ANTHROPIC_API_KEY, the default),
+// OpenRouter (OPENROUTER_API_KEY) or OpenAI (OPENAI_API_KEY); see services/llm.js. Without a key, a rule-based "basic"
+// breakdown keeps every screen working.
 // Every breakdown is cached in ad_analysis, so the same ad is never analysed twice.
 const config = require('../config');
 const db = require('../db');
 const ads = require('./ads');
+const llm = require('./llm');
 const countries = require('../lib/countries');
 const media = require('./media');
 const fs = require('node:fs');
 
-const live = () => !!config.ai.key;
+const live = () => llm.ready();
 
-async function claude({ system, user, maxTokens = 900, model = config.ai.model }) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': config.ai.key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
-    signal: AbortSignal.timeout(60000)
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error('Claude: ' + ((data.error && data.error.message) || res.status));
-  return (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+// One AI answer as text. (Kept under its old name: it now goes through whichever provider is configured.)
+async function ask({ system, user, maxTokens = 900, json = false, feature }) {
+  return llm.complete({ system, messages: [{ role: 'user', content: user }], maxTokens, json, feature });
 }
+async function claude(opts) { return (await ask(opts)).text; }
 function json(text) {
   const s = String(text || ''); const a = s.indexOf('{'); const b = s.lastIndexOf('}');
   if (a < 0 || b < a) throw new Error('AI returned no JSON');
@@ -98,12 +95,12 @@ async function analyse(id, { force = false } = {}) {
   if (live()) {
     let transcript = '';
     try { transcript = await transcribe(a); } catch (e) { console.error('[ai] transcript', e.message); }
-    const raw = await claude({
-      system: SYSTEM_BREAKDOWN,
+    const res = await ask({
+      system: SYSTEM_BREAKDOWN, json: true, feature: 'breakdown',
       user: 'Break down this ad.\n\n' + adBrief(a, transcript) + '\n\nReturn JSON with keys: hook (the first line or first 3 seconds, quoted), angle (one sentence), offer, audience (who it targets, one sentence), triggers (array of 2-4 short emotional triggers), format (one short phrase), why (2-3 sentences: why it works), how_to_adapt (2 sentences: how to make your own version without copying).'
     });
-    const j = json(raw);
-    out = { hook: String(j.hook || out.hook), angle: String(j.angle || out.angle), offer: String(j.offer || out.offer), audience: String(j.audience || out.audience), triggers: Array.isArray(j.triggers) ? j.triggers.map(String).slice(0, 5) : out.triggers, format: String(j.format || out.format), transcript, why: String(j.why || out.why), how_to_adapt: String(j.how_to_adapt || out.how_to_adapt), model: config.ai.model };
+    const j = json(res.text);
+    out = { hook: String(j.hook || out.hook), angle: String(j.angle || out.angle), offer: String(j.offer || out.offer), audience: String(j.audience || out.audience), triggers: Array.isArray(j.triggers) ? j.triggers.map(String).slice(0, 5) : out.triggers, format: String(j.format || out.format), transcript, why: String(j.why || out.why), how_to_adapt: String(j.how_to_adapt || out.how_to_adapt), model: res.model };
   }
   const row = { hook: out.hook.slice(0, 500), angle: out.angle.slice(0, 500), offer: out.offer.slice(0, 500), audience: out.audience.slice(0, 500), triggers: JSON.stringify(out.triggers), format: out.format.slice(0, 200), transcript: out.transcript || '', why: out.why.slice(0, 2000), how_to_adapt: out.how_to_adapt.slice(0, 2000), model: out.model, created_at: db.now() };
   if (cached || db.one('SELECT ad_id FROM ad_analysis WHERE ad_id = ?', a.id)) db.update('ad_analysis', a.id, row, 'ad_id'); else { try { db.insert('ad_analysis', { ad_id: a.id, ...row }); } catch { db.update('ad_analysis', a.id, row, 'ad_id'); } }
@@ -139,13 +136,14 @@ async function makeItMine(id, user, { product = '' } = {}) {
   let out = basicScripts(a, String(product).trim().slice(0, 120));
   let model = 'spyvoo-basic';
   if (live()) {
-    const raw = await claude({
+    const res = await ask({
+      json: true, feature: 'scripts',
       system: 'You are a direct-response ad copywriter. You write fresh ads inspired by the angle of a winning ad, never copying its words. Plain, punchy English. Reply with JSON only.',
       user: 'Winning ad:\n' + adBrief(a) + '\n\nMy product: ' + (product || 'same category as the ad; keep it generic') + '\n\nReturn JSON: {"scripts":[{"title","hook","body","cta"} x3 — each a short video ad script, body under 70 words, written as scene directions and lines], "headlines":[5 short headlines]}',
       maxTokens: 1200
     });
-    const j = json(raw);
-    if (Array.isArray(j.scripts) && j.scripts.length) { out = { scripts: j.scripts.slice(0, 3).map(s => ({ title: String(s.title || ''), hook: String(s.hook || ''), body: String(s.body || ''), cta: String(s.cta || '') })), headlines: (j.headlines || []).map(String).slice(0, 5) }; model = config.ai.model; }
+    const j = json(res.text);
+    if (Array.isArray(j.scripts) && j.scripts.length) { out = { scripts: j.scripts.slice(0, 3).map(s => ({ title: String(s.title || ''), hook: String(s.hook || ''), body: String(s.body || ''), cta: String(s.cta || '') })), headlines: (j.headlines || []).map(String).slice(0, 5) }; model = res.model; }
   }
   db.insert('ad_scripts', { ad_id: a.id, user_id: user.id, product: String(product).slice(0, 120), data: JSON.stringify(out), model, created_at: db.now() });
   return { ...out, model };
@@ -156,12 +154,12 @@ async function parseSearch(text) {
   const base = ads.parseQuery(text);
   if (!live() || String(text).length < 12) return { ...base, via: 'rules' };
   try {
-    const raw = await claude({
-      system: 'Convert an ad-spy search request into filters. Reply with JSON only.',
+    const res = await ask({
+      system: 'Convert an ad-spy search request into filters. Reply with JSON only.', json: true, feature: 'search',
       user: 'Request: ' + String(text).slice(0, 300) + '\n\nJSON keys (omit unknown): q (keywords only, short), countries (ISO-2 codes), min_days (number), cta (array of Meta CTA types like SIGN_UP, LEARN_MORE, SHOP_NOW, INSTALL_MOBILE_APP, ORDER_NOW, WHATSAPP_MESSAGE, SEND_MESSAGE), media (array of video,image,carousel), platforms (facebook,instagram), status (active|inactive), sort (score|days|new|variations), niche (array from: ' + require('./settings').get('niches').join(', ') + ').',
       maxTokens: 300
     });
-    const j = json(raw);
+    const j = json(res.text);
     const out = { ...base };
     for (const k of ['q', 'countries', 'min_days', 'cta', 'media', 'platforms', 'status', 'sort', 'niche']) if (j[k] !== undefined && j[k] !== '' && !(Array.isArray(j[k]) && !j[k].length)) out[k] = j[k];
     return { ...out, via: 'ai' };
@@ -175,7 +173,7 @@ async function nicheReport(niche) {
   if (!top.length) return null;
   let summary = 'The top ' + niche.toLowerCase() + ' ads this week lean on ' + [...new Set(top.flatMap(a => basic(a).triggers))].slice(0, 3).join(', ').toLowerCase() + '. The longest runner is ' + top[0].adv_name + ' at ' + top[0].days_running + ' days.';
   if (live()) {
-    try { summary = (await claude({ system: 'You write a short weekly briefing for media buyers. 3 sentences, plain English, no hype.', user: 'Niche: ' + niche + '\nTop ads this week:\n' + top.map(a => '- ' + a.adv_name + ' (' + a.days_running + ' days, score ' + a.winner_score + '): ' + (a.primary_text || a.headline).slice(0, 160)).join('\n') + '\n\nSummarise the winning angles and hooks.', maxTokens: 300 })).trim(); } catch { /* keep the basic summary */ }
+    try { summary = (await claude({ feature: 'niche_report', system: 'You write a short weekly briefing for media buyers. 3 sentences, plain English, no hype.', user: 'Niche: ' + niche + '\nTop ads this week:\n' + top.map(a => '- ' + a.adv_name + ' (' + a.days_running + ' days, score ' + a.winner_score + '): ' + (a.primary_text || a.headline).slice(0, 160)).join('\n') + '\n\nSummarise the winning angles and hooks.', maxTokens: 300 })).trim(); } catch { /* keep the basic summary */ }
   }
   return { niche, summary, ads: top.map(a => ads.card({ ...a, adv_logo: '' })) };
 }

@@ -105,7 +105,7 @@
     return o;
   };
   A.tag = function (text, tone) { return '<span class="tag2 ' + (tone || '') + '">' + esc(text) + '</span>'; };
-  A.status = function (s) { return A.tag(String(s).replace(/_/g, ' '), { done: 'mint', paid: 'mint', active: 'mint', live: 'mint', running: 'blue', pending: 'orange', sandbox: 'orange', soon: 'orange', refunded: 'orange', failed: 'red', expired: 'red', charged_back: 'red', off: '', inactive: '' }[s] || ''); };
+  A.status = function (s) { return A.tag(String(s).replace(/_/g, ' '), { done: 'mint', paid: 'mint', active: 'mint', live: 'mint', running: 'blue', pending: 'orange', sandbox: 'orange', soon: 'orange', refunded: 'orange', review: 'blue', rejected: 'red', failed: 'red', expired: 'red', charged_back: 'red', off: '', inactive: '' }[s] || ''); };
   // {"found":12,"skipped":"provider not connected"} → "Found 12 · Skipped: provider not connected"
   A.human = function (r) {
     if (r == null || r === '') return '';

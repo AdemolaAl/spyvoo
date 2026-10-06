@@ -45,7 +45,8 @@ must send the header **`x-sv: 1`** (CSRF guard). Errors: non-2xx with `{ "error"
 | GET | `/notifications` | POST `/notifications/read` marks all read |
 | GET | `/plan` | Plans, methods for the user's country, orders, current offer |
 | POST | `/quote` | `{ plan, interval: month/year, coupon? }` |
-| POST | `/checkout` | `{ plan, interval, method_id?, coupon?, coin? }` → `{ ref, amount, provider, checkout_url, instructions }` |
+| POST | `/checkout` | `{ plan, interval, method_id?, coupon?, coin? }` → `{ ref, amount, provider, checkout_url, instructions, pay? }` (`pay` for custom methods: exact amount and currency, account details, instructions, proof mode). Gatevoo failures answer 502/503 `{ error, code: gatevoo_<reason>, other_methods }` |
+| POST | `/orders/:ref/proof` | Custom methods: `{ reference?, image? (PNG/JPG/WebP data URL, 4 MB) }` → order goes to `review` |
 | GET | `/orders/:ref` | Order status (checks Gatevoo when pending) |
 | GET/PATCH | `/me` | Profile: `{ name, country, marketing_opt_out, password + new_password }` |
 | POST | `/onboarding` | `{ tour_seen, niche, … }` |
@@ -60,12 +61,13 @@ rate limited, first N results visible, rest locked), `GET /countries`, `GET /cou
 ## Admin — `/api/admin` (admins only)
 `GET /overview` · rules: `GET/POST /rules`, `PATCH/DELETE /rules/:id`, `POST /rules/:id/run`, `POST /rules/import { csv }` ·
 provider: `GET/PATCH /provider`, `POST /provider/ping`, `POST /provider/test { value, country }` ·
+AI: `PATCH /ai { provider, openrouter_model, fallback_models, key?, clear_key? }` (key never returned; `GET /provider` shows provider, model, key source and last 4), `POST /ai/ping` ·
 jobs: `GET /jobs?kind&status`, `POST /jobs/:id/retry`, `POST /media/retry`, `POST /scheduler/:name` ·
 ads: `GET /ads?q&filter&source&offset`, `PATCH/DELETE /ads/:id`, `POST /ads/:id/reanalyse`, `POST /demo { action: seed|clear }` ·
 users: `GET /users?q&offset`, `GET/PATCH /users/:id { plan_id, plan_renews_at, role, suspended, name }` ·
 plans: `GET /plans`, `PUT/DELETE /plans/:id` ·
-payments: `GET /payments`, `POST /payments/methods`, `PATCH/DELETE /payments/methods/:id`, `POST /payments/gatevoo/ping`,
-`GET /orders?status`, `POST /orders/:ref/paid`, `POST /orders/:ref/check`, `POST /orders/:ref/refund { amount?, end_plan? }`, `POST /orders/:ref/chargeback { amount? }` (both send the VooSquare event), `POST /coupons`, `PATCH/DELETE /coupons/:code` ·
+payments: `GET /payments` (methods with `warnings`, Gatevoo status with `last_error`, `review` count), `POST /payments/methods`, `PATCH/DELETE /payments/methods/:id` (custom: `icon, details ("Label: value" lines), currency, rate, proof_mode, instructions`), `POST /payments/methods/:id/move { dir: -1|1 }`, `POST /payments/gatevoo/ping`,
+`GET /orders?status` (`review`, `rejected`, `expired`…), `POST /orders/:ref/approve { note? }`, `POST /orders/:ref/reject { reason }`, `GET /orders/:ref/proof` (screenshot), `POST /orders/:ref/paid`, `POST /orders/:ref/check`, `POST /orders/:ref/refund { amount?, end_plan? }`, `POST /orders/:ref/chargeback { amount? }` (both send the VooSquare event), `POST /coupons`, `PATCH/DELETE /coupons/:code` ·
 settings: `GET /settings`, `PATCH /settings/:group { value }` for platforms, score, announcement, offer, family, niches,
 company, billing, flags · emails: `GET /emails`, `GET /emails/:name/preview`, `POST /emails/test { to, name }`,
 `POST /emails/broadcast { subject, body, plan?, dry? }`, `POST /emails/offer { dry? }` · `GET /audit` ·

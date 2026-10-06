@@ -196,6 +196,8 @@ module.exports = function (app) {
   });
   app.post('/api/app/quote', rateLimitUser('quote', 60, 600e3), req => { auth.needUser(req); const b = req.body || {}; return payments.quote(req.user, b.plan, b.interval, b.coupon); });
   app.post('/api/app/checkout', rateLimit('checkout', 20, 3600e3), async req => { auth.needUser(req); return payments.checkout(req.user, req.body || {}); });
+  // Custom payment methods: the customer adds a reference and/or a screenshot; the order then waits for an admin.
+  app.post('/api/app/orders/:ref/proof', rateLimitUser('proof', 20, 3600e3), req => { auth.needUser(req); const b = req.body || {}; return { ok: true, pay: payments.submitProof(req.user, req.params.ref, { reference: b.reference, image: b.image }) }; });
   app.get('/api/app/orders/:ref', async req => {
     auth.needUser(req);
     let o = db.one('SELECT * FROM orders WHERE ref = ? AND user_id = ?', req.params.ref, req.user.id);

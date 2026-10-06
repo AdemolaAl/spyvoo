@@ -21,6 +21,13 @@ const DEFAULTS = {
     analyze_new: false,           // false = analyse only when a user opens the ad (cheaper)
     inactive_after_days: 3        // not seen for this long = inactive
   },
+  ai: {
+    provider: '',                 // '' = AI_PROVIDER env (default anthropic) | anthropic | openrouter | openai
+    openrouter_model: '',         // '' = OPENROUTER_MODEL env
+    fallback_models: '',          // '' = OPENROUTER_FALLBACK_MODELS env; comma list tried in order when the main model fails
+    key_enc: '',                  // encrypted key for the provider below; the matching env var also works
+    key_for: ''                   // "<provider> <api origin>" the saved key belongs to; any other endpoint never gets it
+  },
   score: { w_days: 45, w_variations: 25, w_countries: 15, w_active: 15, days_cap: 90, variations_cap: 10, countries_cap: 8 },
   platforms: { facebook: 'live', instagram: 'live', messenger: 'live', tiktok: 'soon', youtube: 'off' },
   niches: ['E-commerce', 'Trading', 'Crypto', 'iGaming', 'Apps', 'Fintech', 'Lead gen', 'Health', 'Beauty', 'Education', 'Travel', 'Fashion', 'Food', 'SaaS', 'Real estate', 'Coaching'],
@@ -41,7 +48,7 @@ const DEFAULTS = {
     { key: 'affleego', name: 'Affleego', tag: 'Deals', title: 'The best affiliate deals. One place.', text: 'Compare CPA and RevShare offers from top trading, betting and app programs, and apply in one tap.', perk: 'Free to join', url: 'https://affleego.com', color: '#F5CF3D', ink: '#141210', accent: '#141210', on: true },
     { key: 'voosquare', name: 'VooSquare', tag: 'One account', title: 'Media buying, squared.', text: 'One login for every Voo tool, one dashboard for all your numbers.', perk: 'Free with every tool', url: 'https://voosquare.com', color: '#0A1A14', ink: '#FFFFFF', accent: '#C8F75A', on: true }
   ],
-  billing: { renew_reminder_days: 3, grace_days: 2 },
+  billing: { renew_reminder_days: 3, grace_days: 2, pending_expire_days: 7 },
   flags: { maintenance: false, signups: true, public_search: true, public_search_limit: 6 }
 };
 

@@ -28,7 +28,7 @@ function seed({ demo = false } = {}) {
     }
     if (!db.one('SELECT id FROM payment_methods LIMIT 1')) {
       db.insert('payment_methods', { name: 'Crypto (USDT or Bitcoin)', provider: 'gatevoo', scope: 'global', description: 'Pay with USDT on TRON or Bitcoin through Gatevoo. Your plan switches on as soon as the payment confirms.', config: JSON.stringify({ coins: ['USDT_TRC20', 'BTC'] }), active: 1, sort: 0 });
-      db.insert('payment_methods', { name: 'Bank transfer', provider: 'manual', scope: 'local', countries: '', description: 'Pay by local bank transfer. We switch your plan on when the money arrives (usually within a few hours).', config: JSON.stringify({ instructions: 'Send the exact amount to the account shown here, with your order reference as the payment note. Then email billing@spyvoo.com.' }), active: 0, sort: 1 });
+      db.insert('payment_methods', { name: 'Bank transfer', provider: 'manual', scope: 'local', countries: '', description: 'Pay by local bank transfer. We switch your plan on when the money arrives (usually within a few hours).', config: JSON.stringify({ icon: 'bank', currency: 'USD', rate: 1, proof_mode: 'either', details: [], instructions: 'Send the exact amount to the account below, with your order reference as the payment note. Then add your transfer reference or a screenshot here.' }), active: 0, sort: 1 });
     }
     if (!db.one("SELECT code FROM coupons WHERE code = 'SPYLAUNCH'")) {
       db.insert('coupons', { code: 'SPYLAUNCH', percent: 50, amount_off: 0, plans: 'starter,pro,agency', intervals: 'month', first_purchase_only: 1, max_uses: 0, uses: 0, active: 1, created_at: now });

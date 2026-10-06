@@ -13,7 +13,39 @@ const { orderRef } = require('../lib/security');
 const DAY = 864e5;
 const round2 = n => Math.round(n * 100) / 100;
 
-function methodOut(m) { const c = db.json(m.config, {}); return { id: m.id, name: m.name, provider: m.provider, scope: m.scope, countries: String(m.countries || '').split(',').filter(Boolean), description: m.description, coins: m.provider === 'gatevoo' ? require('./gatevoo').coins(m).map(c => require('./gatevoo').COINS[c]).filter(Boolean) : undefined, instructions: m.provider === 'manual' ? c.instructions || '' : undefined, active: !!m.active }; }
+// Custom methods (provider "manual"): bank transfer, mobile money, a USDT wallet address... The customer pays by hand
+// using the instructions and account details, adds a reference or a screenshot, and an admin approves or rejects.
+const ICONS = ['bank', 'phone', 'wallet', 'card', 'cash', 'globe'];
+const PROOF_MODES = ['either', 'text', 'image', 'both', 'none'];
+const MAX_DETAILS = 8;
+const clean = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').trim().slice(0, n);
+function manualConfig(c) {
+  c = c || {};
+  const rate = Number(c.rate);
+  return {
+    icon: ICONS.includes(c.icon) ? c.icon : 'bank',
+    instructions: clean(c.instructions, 2000),
+    details: (Array.isArray(c.details) ? c.details : []).map(d => ({ label: clean(d && d.label, 40), value: clean(d && d.value, 200) })).filter(d => d.label || d.value).slice(0, MAX_DETAILS),
+    currency: /^[A-Z0-9]{2,10}$/.test(String(c.currency || '').toUpperCase()) ? String(c.currency).toUpperCase() : 'USD',
+    rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+    proof_mode: PROOF_MODES.includes(c.proof_mode) ? c.proof_mode : 'either'
+  };
+}
+// What the customer pays in the method's currency: USD price × rate, rounded to cents (8 decimals for tiny rates like BTC).
+function localAmount(usd, rate) { return rate < 0.01 ? Math.round(usd * rate * 1e8) / 1e8 : round2(usd * rate); }
+// Problems an admin should fix, shown next to the method in Admin → Payments.
+function methodWarnings(m) {
+  const w = [];
+  const cc = String(m.countries || '').split(',').filter(Boolean);
+  if (m.scope === 'local' && !cc.length) w.push('Nobody sees this method: it is “only some countries” with no countries. Add country codes or make it global.');
+  if (m.provider === 'manual') { const c = manualConfig(db.json(m.config, {})); if (!c.instructions && !c.details.length) w.push('Add instructions or account details so people know where to send the money.'); }
+  return w;
+}
+function methodOut(m) {
+  const c = db.json(m.config, {});
+  const mc = m.provider === 'manual' ? manualConfig(c) : null;
+  return { id: m.id, name: m.name, provider: m.provider, scope: m.scope, countries: String(m.countries || '').split(',').filter(Boolean), description: m.description, coins: m.provider === 'gatevoo' ? require('./gatevoo').coins(m).map(c => require('./gatevoo').COINS[c]).filter(Boolean) : undefined, ...(mc ? mc : {}), active: !!m.active };
+}
 
 function methodsFor(user) {
   const cc = String((user && user.country) || '').toUpperCase();
@@ -60,13 +92,19 @@ async function checkout(user, { plan, interval, method_id: methodId, coupon: cod
   if (q.coupon) {
     // Codes with a use limit: count other people's unpaid checkouts from the last 2 days as taken.
     const c = db.one('SELECT * FROM coupons WHERE code = ? COLLATE NOCASE', q.coupon);
-    const held = c && c.max_uses ? db.one("SELECT COUNT(*) n FROM orders WHERE coupon = ? COLLATE NOCASE AND status = 'pending' AND user_id != ? AND created_at > ?", q.coupon, user.id, new Date(Date.now() - 2 * 864e5).toISOString()).n : 0;
+    const held = c && c.max_uses ? db.one("SELECT COUNT(*) n FROM orders WHERE coupon = ? COLLATE NOCASE AND status IN ('pending', 'review') AND user_id != ? AND created_at > ?", q.coupon, user.id, new Date(Date.now() - 2 * 864e5).toISOString()).n : 0;
     if (c && c.max_uses && c.uses + held >= c.max_uses) throw new HttpError(400, 'That code has been fully used.');
   }
   // A new checkout replaces any unpaid one (keeps billing history clean; a late payment on the old invoice still activates).
   db.run("UPDATE orders SET status = 'failed' WHERE user_id = ? AND status = 'pending'", user.id);
   const ref = orderRef();
-  const id = db.insert('orders', { ref, user_id: user.id, plan_id: q.plan.id, interval: q.interval, amount_usd: q.amount, list_usd: q.list, coupon: q.coupon || '', provider: m.provider, method_id: m.id || null, status: 'pending', created_at: db.now() });
+  // Price lock: the amount (in USD and in the method's own currency) is fixed on the order now and never re-quoted.
+  const mc = m.provider === 'manual' ? manualConfig(db.json((db.one('SELECT config FROM payment_methods WHERE id = ?', m.id) || {}).config, {})) : null;
+  const payAmount = mc ? localAmount(q.amount, mc.rate) : q.amount;
+  const payCurrency = mc ? mc.currency : 'USD';
+  const id = db.insert('orders', { ref, user_id: user.id, plan_id: q.plan.id, interval: q.interval, amount_usd: q.amount, list_usd: q.list, coupon: q.coupon || '', provider: m.provider, method_id: m.id || null, status: 'pending', created_at: db.now(), pay_amount: payAmount, pay_currency: payCurrency,
+    // A copy of what to pay and where, so a later edit or deletion of the method never changes an open order.
+    meta: mc ? JSON.stringify({ pay: { name: m.name, icon: mc.icon, instructions: mc.instructions, details: mc.details, proof_mode: mc.proof_mode } }) : '{}' });
   const order = db.one('SELECT * FROM orders WHERE id = ?', id);
   let url = '';
   if (m.provider === 'gatevoo') {
@@ -77,13 +115,20 @@ async function checkout(user, { plan, interval, method_id: methodId, coupon: cod
       url = inv.checkout_url;
       db.update('orders', id, { provider_ref: inv.id, checkout_url: url, meta: JSON.stringify({ expires_at: inv.expires_at, coin: coin || null }) });
     } catch (e) {
-      db.update('orders', id, { status: 'failed', meta: JSON.stringify({ error: e.message }) });
-      throw new HttpError(502, 'Crypto checkout is unavailable right now. Please try again in a minute.');
+      // The exact reason goes to the order (Admin → Payments shows it) and the server log; the customer gets a
+      // specific, safe message instead of "Something went wrong".
+      const x = gv.explain(e);
+      db.update('orders', id, { status: 'failed', meta: JSON.stringify({ error: x.reason, gv_error: x.code }) });
+      console.error('[gatevoo] checkout ' + ref + ' failed (' + x.code + '): ' + x.reason);
+      const err = new HttpError(x.code === 'not_configured' ? 503 : 502, x.user, { code: 'gatevoo_' + x.code, other_methods: methods.some(o => o.provider !== 'gatevoo') });
+      err.expose = true;
+      throw err;
     }
   } else if (m.provider === 'demo') {
     url = '/pay/demo/' + encodeURIComponent(ref);
     db.update('orders', id, { checkout_url: url });
   }
+  if (m.provider === 'manual') return { ref, amount: q.amount, provider: 'manual', checkout_url: '', instructions: mc.instructions, pay: payOut(db.one('SELECT * FROM orders WHERE id = ?', id)) };
   return { ref, amount: q.amount, provider: m.provider, checkout_url: url, instructions: m.instructions || '' };
 }
 
@@ -134,7 +179,7 @@ function fulfill(ref, { via = 'manual', provider_ref: pref } = {}) {
 function ordersFor(user) {
   return db.all('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', user.id).map(o => {
     const meta = db.json(o.meta, {});
-    return { ref: o.ref, plan: (account.plan(o.plan_id) || {}).name, interval: o.interval, amount: o.amount_usd, list: o.list_usd, coupon: o.coupon, provider: o.provider, status: o.status, created_at: o.created_at, paid_at: o.paid_at, pay_url: o.status === 'pending' ? o.checkout_url : '', coin: meta.coin || null, tx_url: meta.tx_hash ? require('./gatevoo').txUrl(meta.coin, meta.tx_hash) : null, underpaid: !!meta.underpaid };
+    return { ref: o.ref, plan: (account.plan(o.plan_id) || {}).name, interval: o.interval, amount: o.amount_usd, list: o.list_usd, coupon: o.coupon, provider: o.provider, status: o.status, created_at: o.created_at, paid_at: o.paid_at, pay_url: o.status === 'pending' ? o.checkout_url : '', coin: meta.coin || null, tx_url: meta.tx_hash ? require('./gatevoo').txUrl(meta.coin, meta.tx_hash) : null, underpaid: !!meta.underpaid, pay: o.provider === 'manual' ? payOut(o) : undefined, review_note: o.status === 'rejected' ? o.review_note : undefined };
   });
 }
 
@@ -161,7 +206,7 @@ function renewals() {
     mailer.send(u.email, 'plan-expired', { name: (u.name || '').split(' ')[0] || 'there', plan: old, plan_url: config.appUrl + '/app/plan' });
     expired++;
   }
-  return { reminded, expired };
+  return { reminded, expired, stale: expireStale() };
 }
 
 // Admin: money went back to the customer (all or part of a paid order). VooSquare logs it; affiliate commission stays.
@@ -204,4 +249,94 @@ function settleBack(ref, status, { amount, endPlan, by }) {
   return { ok: true, status, amount: out.value, plan_ended: out.ended, voo_event: ev || null };
 }
 
-module.exports = { methodsFor, methodOut, coupon, quote, checkout, fulfill, ordersFor, renewals, periodEnd, refund, chargeback };
+// What the customer needs to pay a custom-method order by hand (from the copy saved on the order).
+function payOut(o) {
+  const p = db.json(o.meta, {}).pay || {};
+  return { ref: o.ref, name: p.name || 'Payment', icon: p.icon || 'bank', instructions: p.instructions || '', details: p.details || [], proof_mode: p.proof_mode || 'either',
+    amount: o.pay_amount != null ? o.pay_amount : o.amount_usd, currency: o.pay_currency || 'USD', amount_usd: o.amount_usd, list_usd: o.list_usd, coupon: o.coupon,
+    status: o.status, proof: o.proof || '', has_screenshot: !!o.proof_file, proof_at: o.proof_at || null, review_note: o.status === 'rejected' ? o.review_note : '' };
+}
+
+// Screenshots are private: kept on the data volume (never on public media storage), served to admins only.
+const PROOF_MAX = 4 * 1024 * 1024;
+function proofDir() { return require('node:path').join(require('node:path').dirname(config.dbPath), 'proofs'); }
+function decodeImage(dataUrl) {
+  const m = /^data:(image\/(png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || ''));
+  if (!m) throw new HttpError(400, 'The screenshot must be a PNG, JPG or WebP image.');
+  const buf = Buffer.from(m[3], 'base64');
+  if (buf.length > PROOF_MAX) throw new HttpError(413, 'That screenshot is too big. Keep it under 4 MB.');
+  const png = buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const jpg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  const webp = buf.slice(0, 4).toString('latin1') === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP';
+  if (!(png || jpg || webp)) throw new HttpError(400, 'That file isn’t a PNG, JPG or WebP image.');
+  return { buf, ext: png ? 'png' : jpg ? 'jpg' : 'webp' };
+}
+function proofFile(o) {
+  if (!o || !o.proof_file || !/^[A-Za-z0-9-]+\.(png|jpg|webp)$/.test(o.proof_file)) return null;
+  const f = require('node:path').join(proofDir(), o.proof_file);
+  return require('node:fs').existsSync(f) ? f : null;
+}
+
+// The customer says they paid: a reference and/or a screenshot, as the method asks. The order waits for review.
+function submitProof(user, ref, { reference, image } = {}) {
+  const o = db.one('SELECT * FROM orders WHERE ref = ? AND user_id = ?', String(ref), user.id);
+  if (!o) throw new HttpError(404, 'Order not found.');
+  if (o.provider !== 'manual') throw new HttpError(400, 'This order is paid through the provider’s own page.');
+  if (o.status === 'paid') throw new HttpError(400, 'This order is already paid.');
+  if (!['pending', 'review', 'expired'].includes(o.status)) throw new HttpError(400, o.status === 'rejected' ? 'This order was declined. Start a new checkout.' : 'This order can’t take a payment any more. Start a new checkout.');
+  const mode = payOut(o).proof_mode;
+  const text = clean(reference, 300);
+  const hasText = text.length >= 3, hasImg = !!image;
+  if (mode === 'text' && !hasText) throw new HttpError(400, 'Type your transfer reference or transaction ID.');
+  if (mode === 'image' && !hasImg) throw new HttpError(400, 'Add a screenshot of your payment.');
+  if (mode === 'both' && (!hasText || !hasImg)) throw new HttpError(400, 'Add your transfer reference and a screenshot of the payment.');
+  if (mode !== 'none' && !hasText && !hasImg) throw new HttpError(400, 'Type your transfer reference, or add a screenshot of the payment.');
+  let file = o.proof_file;
+  if (hasImg) {
+    const img = decodeImage(image);
+    const fs = require('node:fs');
+    fs.mkdirSync(proofDir(), { recursive: true });
+    file = o.ref + '-' + require('node:crypto').randomBytes(6).toString('hex') + '.' + img.ext;
+    fs.writeFileSync(require('node:path').join(proofDir(), file), img.buf);
+    const old = proofFile(o); if (old) { try { fs.unlinkSync(old); } catch { /* keep going */ } }
+  }
+  db.update('orders', o.id, { status: 'review', proof: hasText ? text : o.proof, proof_file: file || '', proof_at: db.now() });
+  db.insert('notifications', { user_id: user.id, kind: 'billing', title: 'Payment sent for review', body: 'We’ll check your ' + payOut(o).name + ' payment for order ' + o.ref + ' and switch your plan on. This usually takes a few hours.', url: '/app/plan', created_at: db.now() });
+  return payOut(db.one('SELECT * FROM orders WHERE id = ?', o.id));
+}
+
+// Admin approves a custom-method payment: the plan switches on (receipt email + notice), at the locked price.
+function approve(ref, { by = '', note = '' } = {}) {
+  const o = db.one('SELECT * FROM orders WHERE ref = ?', String(ref));
+  if (!o) throw new HttpError(404, 'Order not found');
+  if (o.status === 'paid') return { ok: true, already: true };
+  if (['refunded', 'charged_back'].includes(o.status)) throw new HttpError(400, 'This order was ' + o.status.replace('_', ' ') + '.');
+  fulfill(o.ref, { via: 'admin:' + by });
+  db.update('orders', o.id, { reviewed_at: db.now(), reviewed_by: by, review_note: clean(note, 500) });
+  return { ok: true };
+}
+
+// Admin rejects a custom-method payment with a reason the customer sees (in-app notice and email).
+function reject(ref, { by = '', reason = '' } = {}) {
+  const o = db.one('SELECT * FROM orders WHERE ref = ?', String(ref));
+  if (!o) throw new HttpError(404, 'Order not found');
+  const why = clean(reason, 500);
+  if (why.length < 3) throw new HttpError(400, 'Say why, so the customer knows what to fix.');
+  if (!['pending', 'review', 'expired'].includes(o.status)) throw new HttpError(400, 'Only unpaid orders can be rejected (this one is ' + o.status + ').');
+  db.update('orders', o.id, { status: 'rejected', review_note: why, reviewed_at: db.now(), reviewed_by: by });
+  const u = db.one('SELECT * FROM users WHERE id = ?', o.user_id);
+  const plan = (account.plan(o.plan_id) || {}).name || o.plan_id;
+  db.insert('notifications', { user_id: u.id, kind: 'billing', title: 'Payment not approved', body: 'Order ' + o.ref + ': ' + why, url: '/app/plan', created_at: db.now() });
+  require('./mailer').send(u.email, 'payment-rejected', { name: (u.name || '').split(' ')[0] || 'there', plan, reference: o.ref, amount: Number(o.pay_amount != null ? o.pay_amount : o.amount_usd).toFixed(2), currency: o.pay_currency || 'USD', reason: why, plan_url: config.appUrl + '/app/plan' });
+  return { ok: true };
+}
+
+// Unpaid orders left alone for N days (Admin → Settings → Billing) turn "expired". Nothing is deleted, and an admin can
+// still approve one if the money turns up later.
+function expireStale(at = Date.now()) {
+  const days = Math.max(1, Math.floor(Number(settings.get('billing').pending_expire_days) || 7));
+  const cut = new Date(at - days * DAY).toISOString();
+  return db.run("UPDATE orders SET status = 'expired', review_note = ? WHERE status = 'pending' AND created_at < ?", 'Not paid within ' + days + (days === 1 ? ' day' : ' days'), cut).changes;
+}
+
+module.exports = { ICONS, PROOF_MODES, manualConfig, localAmount, methodWarnings, payOut, proofFile, submitProof, approve, reject, expireStale, methodsFor, methodOut, coupon, quote, checkout, fulfill, ordersFor, renewals, periodEnd, refund, chargeback };

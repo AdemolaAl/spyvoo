@@ -136,7 +136,8 @@ const SAMPLE = {
   search_name: 'Crypto in Brazil, 30+ days', count_label: '6 new ads', search_url: U + '/app/discover', niche: 'Crypto', summary: 'Low-risk entry offers (“start with $10”) and copy-trading angles keep winning this week.',
   inviter_name: 'Maya', team_name: 'Glow Lab', invite_url: U + '/invite?token=sample', budget: '5', spent: '5.02',
   offer_title: 'Launch offer', offer_text: 'Half price on your first month of Starter, Pro or Agency.', offer_code: 'SPYLAUNCH',
-  subject: 'An update from Spyvoo', body_html: '<p>This is a sample announcement.</p>'
+  subject: 'An update from Spyvoo', body_html: '<p>This is a sample announcement.</p>',
+  reason: 'We couldn’t find a transfer with this reference. Please check the reference and try again.'
 };
 
 module.exports = { pending, send, build, list, SAMPLE };

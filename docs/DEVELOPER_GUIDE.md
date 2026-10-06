@@ -20,7 +20,7 @@ spyvoo/
   src/db.js            SQLite (WAL), migrations, helpers
   src/lib/             http framework, auth (cookie sv_s, CSRF header x-sv: 1), security, countries
   src/providers/       ad data adapters: apify.js, demo.js (sample ads), template.js, index.js (registry)
-  src/services/        ingest, ads (search/score), ai (Claude), media (disk/R2), mailer, payments, gatevoo,
+  src/services/        ingest, ads (search/score), ai (breakdowns etc.), llm (Claude / OpenRouter / OpenAI), media (disk/R2), mailer, payments, gatevoo,
                        voosquare, library (boards/alerts), account (plans/limits), settings, scheduler
   src/routes/          auth, app (/api/app), admin (/api/admin), public, webhooks, pages, voosquare
   public/              CSS + browser JS (dashboard SPA, admin SPA, landing)
@@ -40,7 +40,7 @@ Useful commands (Node 22.13 or newer):
 npm start                    # run locally; open http://localhost:3000 and /admin
 npm test                     # test suite
 npm run check                # launch readiness report
-npm run check -- --ping      # same, and also calls Apify, Claude and Gatevoo
+npm run check -- --ping      # same, and also calls Apify, the AI provider and Gatevoo
 npm run backup               # SQLite copy into data/backups/ (keeps the newest 14)
 npm run create-admin -- you@example.com "password-of-10+-chars" ["Name"]
 npm run seed -- --demo       # re-add the sample ads
@@ -60,11 +60,12 @@ ads. Everything else can be switched on later by adding a variable and redeployi
 | **Apify** | Meta Ad Library scraper (actor `apify~facebook-ads-scraper`) | `APIFY_TOKEN`, optional `APIFY_ACTOR`, `APIFY_API_URL` | console.apify.com → sign up → **Settings → Integrations (API & Integrations)** → copy the Personal API token. You can also paste it later in Admin → Ad data & AI (stored encrypted, and it wins over the env var) | Yes for real ads (otherwise sample ads only) | Plans: Free $0 ($5 credit), Starter $19, Scale $199, Business $999 (each includes that much usage). Actor is pay-per-result: **$5.80 / $5.00 / $4.20 / $3.40 per 1,000 ads** on Free / Starter / Scale / Business |
 | **Domain DNS** | `spyvoo.com` → Railway, email records | none | Move DNS to Cloudflare (free): dash.cloudflare.com → **Add a domain** → change nameservers at your registrar | Yes | Cloudflare DNS: free |
 | **Anthropic (Claude)** | AI breakdowns, "Make it mine" scripts, plain-English search, weekly niche summary | `ANTHROPIC_API_KEY`, `AI_MODEL` (default `claude-haiku-4-5-20251001`) | console.anthropic.com → **Settings → Billing**: add credit → **API keys → Create key** | Recommended (without it a rule-based "basic" mode runs) | Haiku 4.5: $1 input / $5 output per million tokens. Sonnet 5.5: $2 / $10. Batch is half price (the app doesn't use batch) |
+| **OpenRouter** (optional, instead of Anthropic) | The same AI features on almost any model, with fallbacks | `AI_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default `anthropic/claude-sonnet-4.5`), `OPENROUTER_FALLBACK_MODELS` | openrouter.ai → add credit → **Keys → Create key** (or save the key in Admin → Ad data & AI) | Optional | The model's own price, e.g. Sonnet 4.5: $3 input / $15 output per million tokens |
 | **Email sending: Resend** (recommended) | All 13 automatic emails | `MAIL_PROVIDER=resend`, `MAIL_API_KEY`, `MAIL_FROM`, `MAIL_REPLY_TO` | resend.com → **Domains → Add domain** `spyvoo.com` → add the DNS records it shows → **API Keys → Create** (sending access) | Yes in production (otherwise emails are only logged) | Free: 3,000/mo, **100/day cap**. Pro $20/mo for 50,000. Scale $90/mo for 100,000. Extra $0.90 per 1,000 |
 | Email alt: **Brevo** | Same | `MAIL_PROVIDER=brevo`, `MAIL_API_KEY` | app.brevo.com → **Senders, Domains & IPs → Domains** → authenticate → **SMTP & API → API keys** | Alternative | Free 300/day (Brevo logo on emails). Starter from about $9/mo for 5,000 (check current price) |
 | Email alt: **Postmark** | Same | `MAIL_PROVIDER=postmark`, `MAIL_API_KEY` = *Server* token | account.postmarkapp.com → **Sender Signatures → Add Domain** → Server → **API Tokens** | Alternative | Free 100/mo. Basic $15/mo for 10,000, then $1.80 per 1,000 |
 | **Email receiving** | `support@`, `billing@`, `legal@`, `privacy@` (and `hello@` replies) | none (addresses set in Admin → Settings → Company) | **Cloudflare Email Routing**: domain → Email → Email Routing → enable → add each address → your inbox. Or **ImprovMX**, or a **Zoho Mail** mailbox for `support@` | Yes (`support@` is the Reply-To on every email) | Cloudflare Email Routing: free. ImprovMX: free (1 domain, 25 aliases, 500/day), Premium $9/mo. Zoho Mail: free plan exists, check current price |
-| **Gatevoo** | Crypto checkout (USDT TRC20, BTC), Zedapex's own | `GATEVOO_API_KEY` (`gv_live_…`), `GATEVOO_WEBHOOK_SECRET`, optional `GATEVOO_API_URL` (default `https://api.gatevoo.com/v1`) | Gatevoo dashboard → create an API key for Spyvoo + a webhook secret → add webhook URL `https://spyvoo.com/webhooks/gatevoo`. The API Gatevoo must provide is in `docs/GATEVOO.md` §3 | Yes to take money | Internal (Zedapex) |
+| **Gatevoo** | Crypto checkout (USDT TRC20, BTC), Zedapex's own | `GATEVOO_API_KEY` (`gv_live_…`), `GATEVOO_WEBHOOK_SECRET`, optional `GATEVOO_API_URL` (default `https://gatevoo.com/api/v1`; never `api.gatevoo.com`, which does not exist) | Gatevoo dashboard → create an API key for Spyvoo + a webhook secret → add webhook URL `https://spyvoo.com/webhooks/gatevoo`. The API Gatevoo must provide is in `docs/GATEVOO.md` §3 | Yes to take money | Internal (Zedapex) |
 | **OpenAI Whisper** | Transcribes video ads so the AI can read what they say | `TRANSCRIBE_API_KEY`, optional `TRANSCRIBE_API_URL`, `TRANSCRIBE_MODEL` (default `whisper-1`) | platform.openai.com → **Billing** add credit → **API keys → Create new secret key** | Optional | whisper-1: $0.006 per minute ($0.0001/sec) |
 | **Cloudflare R2** | **Stores every ad video and image**, streamed to users with zero egress fees | `MEDIA_DRIVER=r2`, `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_URL` (optional `R2_ENDPOINT`) | Cloudflare → **R2** → Create bucket `spyvoo-media` → bucket **Settings → Custom Domains** → `media.spyvoo.com` → R2 overview → **Manage R2 API Tokens** → Create (Object Read & Write, this bucket) | **Yes, from day one** | $0.015 per GB-month. Free each month: 10 GB, 1M Class A, 10M Class B ops. Then $4.50 per million writes and $0.36 per million reads. **Zero egress** |
 | **VooSquare** | Voo ID login (next to email login), affiliate hand-off, money/activity events, summary card, support widget (Voo Connect kit in `voo-connect/`) | `VOO_BASE`, `VOO_CLIENT_ID`, `VOO_CLIENT_SECRET`, `VOO_API_KEY`, `VOO_SIGNAL_SECRET`; flags `VOO_CONNECT`, `VOO_WIDGET` (docs/VOOSQUARE.md) |
@@ -137,6 +138,41 @@ Rules:
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` only create the admin on the **first boot of an empty database**. If you set them
   later, use `npm run create-admin` instead.
 - Click **Deploy** to apply the changes.
+
+#### Use OpenRouter (optional)
+
+OpenRouter lets Spyvoo's AI run on almost any model (Claude, GPT, Gemini, Llama…) with one key and one bill.
+Claude direct (`ANTHROPIC_API_KEY`) stays the default; nothing changes unless you switch.
+
+1. Make an account at [openrouter.ai](https://openrouter.ai), add some credit, then **Keys → Create key**.
+2. On Railway → your service → **Variables**, add:
+   ```
+   AI_PROVIDER=openrouter
+   OPENROUTER_API_KEY=sk-or-...
+   OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
+   # optional, tried in order when the main model is down or busy:
+   OPENROUTER_FALLBACK_MODELS=openai/gpt-4o-mini
+   ```
+   Or skip the variables and do it in **Admin → Ad data & AI → AI provider** (the key is stored encrypted, only its
+   last 4 characters are ever shown, and switching provider means typing the key again).
+3. **Pick a model**: copy its id from [openrouter.ai/models](https://openrouter.ai/models), e.g.
+   `anthropic/claude-sonnet-4.5` (the default) or `openai/gpt-4o-mini` (much cheaper).
+4. Press **Test AI** in the admin, or run `npm run check -- --ping`.
+
+**Costs.** You pay per token at the price shown on each model's page, from prepaid OpenRouter credit. The default
+`anthropic/claude-sonnet-4.5` is $3 per million input tokens and $15 per million output, so one ad breakdown costs
+about 1 cent (roughly 3 times Claude Haiku direct). For a lot of traffic pick a cheaper model. Today's AI calls,
+tokens and cost are shown in **Admin → Ad data & AI**, and the limits (200 AI searches a day per account, AI
+breakdowns per plan) work the same with every provider.
+
+How it works in the code: `src/services/llm.js` has one `complete({ system, messages, maxTokens, temperature, json })`.
+For OpenRouter and OpenAI it sends the system prompt as a `system` message, asks for JSON with
+`response_format: { type: "json_object" }`, passes fallbacks as `models`, sends `HTTP-Referer` (APP_URL) and
+`X-Title: Spyvoo`, retries 408/429/5xx twice with backoff (honours `Retry-After`), and times out after 60 s
+(`AI_TIMEOUT_MS`, `AI_RETRIES`). The Claude path is the same single request as before. Keys only go to
+`openrouter.ai`, `api.openai.com` or `api.anthropic.com` (`checkApiUrl` in `src/lib/netguard.js`);
+`OPENROUTER_BASE_URL` / `OPENAI_BASE_URL` are for local mocks and are ignored in production. Tests:
+`test/openrouter.test.js` with the mock in `test/mock-ai.js` (ports 4971–4979).
 
 ### 3.5 First deploy: what the logs should say
 
@@ -211,7 +247,7 @@ Work through the pages in this order:
    (3 seats). Limits use `-1` for unlimited. Hide a plan rather than delete it.
 6. **Payments** (`/admin/payments`)
    - Gatevoo card: the status should be **live**. Copy the webhook URL (`https://spyvoo.com/webhooks/gatevoo`) into
-     Gatevoo, then press **Test connection**. You want "Connected".
+     Gatevoo, then press **Test payment connection**. You want "Connected".
    - **Payment methods**: "Crypto (USDT or Bitcoin)" is global and on. "Bank transfer" is local and **off**. For a
      local method, set scope **Only some countries** and countries like `BR, EG`, add instructions, and switch it on.
      Users only see the methods for their country. You confirm bank payments with **Orders → Mark paid**.
@@ -325,7 +361,7 @@ it in `REGISTRY` in `src/providers/index.js`, deploy, and pick it in Admin → A
 | Only sample ads show | Provider not connected. Set the token, then run **Test scrape**. |
 | Scrape jobs fail "Daily credit budget reached" | Raise the budget or lengthen the rule intervals. It resets at 00:00 UTC. |
 | Apify error 401/403 | Bad token, or you're out of Apify credit. Check console.apify.com → Billing. |
-| Breakdowns look generic (`spyvoo-basic`) | `ANTHROPIC_API_KEY` missing or out of credit. Run `npm run check -- --ping`. |
+| Breakdowns look generic (`spyvoo-basic`) | The AI key is missing or out of credit (`ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY` when `AI_PROVIDER=openrouter`). Run `npm run check -- --ping`. |
 | Emails show "logged", not sent | `MAIL_PROVIDER`/`MAIL_API_KEY` missing, or the domain isn't verified with the provider. |
 | Emails land in spam | Missing DKIM/DMARC, or `MAIL_FROM` isn't on the verified domain. |
 | Resend 429 / emails stop mid-Monday | Free plan's 100/day cap. Upgrade to Pro. The app already paces sends (about 2 a second) and retries 429/5xx, so short bursts are fine. |

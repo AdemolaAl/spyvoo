@@ -7,6 +7,7 @@ process.env.SV_QUIET = '1';
 process.env.MAIL_PROVIDER = 'log';
 process.env.APP_URL = 'http://localhost:3000';
 delete process.env.ANTHROPIC_API_KEY;
+for (const k of ['AI_PROVIDER', 'OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'OPENROUTER_FALLBACK_MODELS', 'OPENROUTER_BASE_URL', 'OPENAI_API_KEY', 'OPENAI_BASE_URL']) delete process.env[k];
 delete process.env.TRANSCRIBE_API_KEY;
 delete process.env.APIFY_TOKEN;
 delete process.env.GATEVOO_API_KEY;

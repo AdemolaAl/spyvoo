@@ -22,6 +22,11 @@ Tip: start with 10–20 rules across your best niches and countries, watch the c
 - **Save images and videos forever**: keep on. It is what makes Spyvoo better than the Ad Library (links expire there).
 - **Write AI breakdowns for every new ad**: off = only when someone opens an ad (much cheaper). On = instant everywhere.
 - **Test scrape** pulls up to 10 ads right now to prove the connection.
+- **AI provider**: Claude direct (default), OpenRouter or OpenAI. For OpenRouter pick the model id (from
+  openrouter.ai/models) and optional fallback models, and paste the key. The key is stored encrypted and never shown
+  again (only its last 4 characters). Switching provider clears the saved key, so paste the new provider's key in the
+  same save. **Test AI** sends a one-word question. The AI box shows today's calls, tokens and cost. Every change is in
+  the audit log (without the key).
 
 ## Job monitor
 Every scrape, media download and AI job. Filter by kind and status, **Retry** failed ones, **Run now** any scheduled
@@ -41,7 +46,8 @@ and visibility. The website, pricing page and checkout update instantly. Hide a 
 are on it.
 
 ## Payments
-- **Gatevoo**: status (live / sandbox / off), the webhook URL to paste into Gatevoo, **Test connection**.
+- **Gatevoo**: status (live / sandbox / off), the webhook URL to paste into Gatevoo, the API address, **Test payment connection** (says exactly what is wrong) and the last failed crypto checkout with its reason.
+- **Custom payment methods** (bank transfer, mobile money, a wallet address…): icon, account details with copy buttons, currency and rate, proof mode, countries, ↑ ↓ order. Orders waiting for you are under **Orders → Review**: approve (plan on) or reject with a reason. See [PAYMENTS_CHECKLIST.md](PAYMENTS_CHECKLIST.md) §5.
 - **Payment methods**: global (everyone) or local (only listed countries). Gatevoo crypto, or manual methods like a local
   bank transfer with your own instructions. Users only see the methods for their country.
 - **Coupons**: percent or amount off, limited to plans, monthly/yearly, first purchase only, max uses, end date.

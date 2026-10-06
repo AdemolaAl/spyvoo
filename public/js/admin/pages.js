@@ -19,7 +19,7 @@
         ['Scrape budget today', d.credits.left > 0 ? 'ok' : 'warn', SV.money(d.credits.spent) + ' of ' + SV.money(d.credits.budget) + ' spent', d.credits.left > 0 ? SV.money(d.credits.left) + ' left' : 'Paused', '/admin/provider'],
         ['AI breakdowns', d.ai ? 'ok' : 'warn', d.ai ? 'Claude is writing breakdowns' : 'Basic rules only. Add ANTHROPIC_API_KEY.', d.ai ? 'Live' : 'Basic', '/admin/provider'],
         ['Emails', d.mail ? 'ok' : 'warn', d.mail ? 'Sending through your email provider' : 'Logged only. Add MAIL_PROVIDER and MAIL_API_KEY.', d.mail ? 'Live' : 'Log only', '/admin/emails'],
-        ['Payments', d.gatevoo === 'live' ? 'ok' : d.gatevoo === 'sandbox' || d.demo_payments ? 'warn' : 'bad', d.gatevoo === 'live' ? 'Gatevoo crypto checkout is live' : d.demo_payments ? 'Test checkout (PAYMENTS_DEMO) is on' : d.gatevoo === 'sandbox' ? 'Gatevoo sandbox: no real coins move' : 'No payment method can take money', d.gatevoo === 'live' ? 'Live' : d.gatevoo === 'sandbox' ? 'Sandbox' : d.demo_payments ? 'Test' : 'Off', '/admin/payments'],
+        ['Payments', d.gatevoo_error && !d.gatevoo_error.resolved ? 'bad' : d.gatevoo === 'live' ? 'ok' : d.gatevoo === 'sandbox' || d.demo_payments ? 'warn' : 'bad', d.gatevoo_error && !d.gatevoo_error.resolved ? 'Last crypto checkout failed: ' + d.gatevoo_error.reason : d.gatevoo === 'live' ? 'Gatevoo crypto checkout is live' : d.demo_payments ? 'Test checkout (PAYMENTS_DEMO) is on' : d.gatevoo === 'sandbox' ? 'Gatevoo sandbox: no real coins move' : 'No payment method can take money' + (d.gatevoo_missing && d.gatevoo_missing.length ? ' (' + d.gatevoo_missing.join(', ') + ')' : ''), d.gatevoo === 'live' ? 'Live' : d.gatevoo === 'sandbox' ? 'Sandbox' : d.demo_payments ? 'Test' : 'Off', '/admin/payments'],
         ['Media storage', d.media.failed ? 'warn' : 'ok', SV.n(d.media.files) + ' files saved' + (d.media.pending ? ', ' + SV.n(d.media.pending) + ' waiting' : '') + (d.media.failed ? ', ' + SV.n(d.media.failed) + ' failed' : ''), d.media.driver === 'r2' ? 'R2' : 'Disk', '/admin/jobs']
       ];
       var planCount = {}; d.plans.forEach(function (p) { planCount[p.plan_id] = p.n; });
@@ -110,6 +110,21 @@
   }
 
   /* ======================= PROVIDER + AI ======================= */
+  // Which AI answers (Claude direct, OpenRouter or OpenAI), the OpenRouter model and fallbacks, and the API key.
+  function aiBox(ai) {
+    var opts = [['', 'Default from AI_PROVIDER (' + (ai.providers.filter(function (p) { return p.id === ai.env_provider; })[0] || { label: ai.env_provider }).label + ')']].concat(ai.providers.map(function (p) { return [p.id, p.label]; }));
+    return '<div class="box"><div class="box-head"><div><h3>' + SV.tile('spark', 'var(--violet)', 28) + 'AI provider</h3><p>OpenRouter gives you hundreds of models (Claude, GPT, Gemini, Llama…) with one key and one bill.</p></div>' +
+      (ai.has_key ? A.tag(ai.key_source === 'admin' ? 'Key saved ' + ai.key_hint : 'Key from ' + ai.key_env + ' ' + ai.key_hint, 'mint') : A.tag('No key', 'red')) + '</div>' +
+      (ai.test_endpoint ? '<div class="note warn" style="margin-bottom:10px">Test address in use: ' + esc(ai.endpoint) + '. Production always uses the real API.</div>' : '') +
+      (ai.saved_key_other_endpoint ? '<div class="note warn" style="margin-bottom:10px">The saved key belongs to another provider and is not used. Type the key for ' + esc(ai.label) + '.</div>' : '') +
+      '<form class="form" id="aiForm">' +
+        A.field('provider', 'Provider', ai.provider_from === 'admin' ? ai.provider : '', { options: opts, full: true }) +
+        '<div class="field full" data-or>' + '<label for="f_openrouter_model">OpenRouter model</label><input class="input" id="f_openrouter_model" name="openrouter_model" list="orModels" value="' + esc(ai.openrouter_model) + '" placeholder="' + esc(ai.default_openrouter_model) + '"><datalist id="orModels"><option value="anthropic/claude-sonnet-4.5"><option value="openai/gpt-4o-mini"></datalist><span class="hint">Leave empty for ' + esc(ai.default_openrouter_model) + '. Copy any id from openrouter.ai/models.</span></div>' +
+        '<div class="field full" data-or>' + '<label for="f_fallback_models">Fallback models (optional)</label><input class="input" id="f_fallback_models" name="fallback_models" value="' + esc(ai.fallback_models) + '" placeholder="' + esc(ai.default_fallbacks || 'openai/gpt-4o-mini') + '"><span class="hint">Comma list. Tried in order if the main model is down or busy.</span></div>' +
+        A.field('key', 'API key', '', { type: 'password', full: true, ph: ai.key_source === 'admin' ? '•••••••• ' + ai.key_hint + ' saved. Type to replace.' : 'sk-or-…', hint: 'For the provider above. Stored encrypted, never shown again. Switching provider means typing its key again.' + (ai.key_source === 'env' ? ' A key is also set in ' + esc(ai.key_env) + '; the one saved here wins.' : ''), attrs: ' autocomplete="new-password"' }) +
+      '</form><div class="save-bar"><button class="btn ghost" id="aiPing">' + I('spark') + 'Test AI</button><button class="btn" id="aiSave">' + I('check') + 'Save</button></div></div>';
+  }
+
   P['/admin/provider'] = function (view) {
     A.load(view, '/api/admin/provider', function (d) {
       var s = d.settings;
@@ -134,15 +149,24 @@
           '<form class="form" id="testForm">' + A.field('value', 'Keyword or page ID', '', { ph: 'online course' }) + A.field('country', 'Country', 'BR', { ph: 'BR' }) + '</form>' +
           '<div class="save-bar"><button class="btn" id="testBtn">' + I('play') + 'Run test</button></div><div id="testOut"></div></div>' +
         '<div class="box"><h3>' + SV.tile('wand', 'var(--pink)', 28) + 'AI</h3><p>Breakdowns, “Make it mine” scripts and plain-English search.</p><div class="health">' +
-          '<div class="' + (d.ai.live ? 'ok' : 'warn') + '"><span class="dot"></span><span>Claude' + '<small>' + (d.ai.live ? 'Model ' + esc(d.ai.model) : 'Not connected: basic rule-based breakdowns are used. Set ANTHROPIC_API_KEY.') + '</small></span><em>' + (d.ai.live ? 'Live' : 'Basic') + '</em></div>' +
-          '<div class="' + (d.ai.transcripts ? 'ok' : 'warn') + '"><span class="dot"></span><span>Video transcripts<small>' + (d.ai.transcripts ? 'Whisper turns video voiceovers into text' : 'Optional. Set OPENAI_API_KEY to read what videos say.') + '</small></span><em>' + (d.ai.transcripts ? 'Live' : 'Off') + '</em></div>' +
+          '<div class="' + (d.ai.live ? 'ok' : 'warn') + '"><span class="dot"></span><span>' + esc(d.ai.label) + '<small>' + (d.ai.live ? 'Model ' + esc(d.ai.model) + (d.ai.fallbacks.length ? ' · then ' + esc(d.ai.fallbacks.join(', ')) : '') : 'Not connected: basic rule-based breakdowns are used. Add the API key below or set ' + esc(d.ai.key_env) + '.') + '</small></span><em>' + (d.ai.live ? 'Live' : 'Basic') + '</em></div>' +
+          '<div class="' + (d.ai.transcripts ? 'ok' : 'warn') + '"><span class="dot"></span><span>Video transcripts<small>' + (d.ai.transcripts ? 'Whisper turns video voiceovers into text' : 'Optional. Set TRANSCRIBE_API_KEY to read what videos say.') + '</small></span><em>' + (d.ai.transcripts ? 'Live' : 'Off') + '</em></div>' +
+          '<div class="ok"><span class="dot"></span><span>AI use today<small>' + SV.n(d.ai.usage_today.calls) + ' calls · ' + SV.n(d.ai.usage_today.input_tokens + d.ai.usage_today.output_tokens) + ' tokens' + (d.ai.usage_today.cost_usd ? ' · about ' + SV.money(d.ai.usage_today.cost_usd) : '') + '</small></span><em>' + SV.n(d.ai.usage_today.calls) + '</em></div>' +
           '<div class="' + (d.media.failed ? 'warn' : 'ok') + '"><span class="dot"></span><span>Media storage<small>' + SV.n(d.media.files) + ' files (' + (d.media.bytes / 1048576).toFixed(0) + ' MB) on ' + (d.media.driver === 'r2' ? 'Cloudflare R2' : 'the server disk') + '</small></span><em>' + (d.media.driver === 'r2' ? 'R2' : 'Disk') + '</em></div>' +
-        '</div></div></div></div>';
+        '</div></div>' + aiBox(d.ai) + '</div></div>';
       $('#provSave').onclick = function () {
         var b = A.read($('#provForm')); if (!b.token) delete b.token;
         A.call('PATCH', '/api/admin/provider', b, this, 'Saved').then(reload);
       };
       $('#pingBtn').onclick = function () { A.call('POST', '/api/admin/provider/ping', {}, this).then(function (x) { SV.toast(x.message, { bad: !x.ok }); }); };
+      var aiF = $('#aiForm');
+      var aiSync = function () { var p = aiF.provider.value || d.ai.env_provider; SV.$$('[data-or]', aiF).forEach(function (el) { el.style.display = p === 'openrouter' ? '' : 'none'; }); };
+      aiF.provider.onchange = aiSync; aiSync();
+      $('#aiSave').onclick = function () {
+        var b = A.read(aiF); if (!b.key) delete b.key;
+        A.call('PATCH', '/api/admin/ai', b, this, function (x) { return x.key_cleared ? 'Saved. The provider changed, so type its API key again.' : 'AI settings saved'; }).then(reload);
+      };
+      $('#aiPing').onclick = function () { A.call('POST', '/api/admin/ai/ping', {}, this).then(function (x) { SV.toast(x.message, { bad: !x.ok }); }); };
       $('#testBtn').onclick = function () {
         var b = A.read($('#testForm'));
         A.call('POST', '/api/admin/provider/test', b, this).then(function (x) {
@@ -308,24 +332,29 @@
         '<div class="g2"><div class="box"><div class="box-head"><div><h3>' + SV.tile('card', 'var(--mint)', 28) + 'Gatevoo crypto checkout</h3><p>USDT (TRON) and Bitcoin, straight to your wallet.</p></div>' + A.status(g.mode) + '</div>' +
           '<div class="stack" style="gap:10px"><div><small class="mut" style="font-weight:800">Webhook URL (paste into Gatevoo)</small><div class="code-box"><span>' + esc(g.webhook_url) + '</span><button class="btn sm ghost" id="cpHook">' + I('copy') + '</button></div></div>' +
           '<div class="row-wrap">' + A.tag(g.has_key ? 'API key set' : 'No API key', g.has_key ? 'mint' : 'red') + A.tag(g.has_secret ? 'Webhook secret set' : 'No webhook secret', g.has_secret ? 'mint' : 'red') + (g.coins || []).map(function (c) { return A.tag(c.label, 'blue'); }).join('') + '</div>' +
+          '<div><small class="mut" style="font-weight:800">API address (GATEVOO_API_URL)</small><div class="code-box"><span>' + esc(g.api_url) + '</span></div></div>' +
           (d.demo ? '<div class="note warn">PAYMENTS_DEMO is on: people can “pay” on a test page. Turn it off before launch.</div>' : '') +
-          '<div class="save-bar" style="margin:0"><button class="btn ghost" id="gvPing">' + I('spark') + 'Test connection</button></div></div></div>' +
+          (g.missing && g.missing.length && g.mode !== 'sandbox' ? '<div class="note warn">' + esc(g.missing.join(', ')) + ' on the server, so customers don’t see crypto checkout.</div>' : '') +
+          (g.last_error && !g.last_error.resolved ? '<div class="note warn"><b>Last crypto checkout failed</b> (' + esc(g.last_error.ref) + ', ' + A.when(g.last_error.at) + '): ' + esc(g.last_error.reason) + '</div>' : '') +
+          '<div id="gvResult"></div>' +
+          '<div class="save-bar" style="margin:0"><button class="btn ghost" id="gvPing">' + I('spark') + 'Test payment connection</button></div></div></div>' +
         '<div class="box"><div class="box-head"><div><h3>' + SV.tile('globe', 'var(--blue)', 28) + 'Payment methods</h3><p>Global methods show to everyone. Local ones only to the countries you list.</p></div><button class="btn sm" id="newMethod">' + I('plus') + 'Add</button></div>' +
-          '<div class="tbl-wrap"><table class="tbl"><tbody>' + d.methods.map(function (m) { return '<tr><td><b>' + esc(m.name) + '</b><br><small class="mut">' + esc(m.provider) + ' · ' + (m.scope === 'local' ? m.countries.map(SV.flag).join(' ') || 'no countries' : 'everyone') + '</small></td><td>' + (m.active ? A.tag('on', 'mint') : A.tag('off')) + '</td><td class="acts"><button class="btn sm ghost" data-m="' + m.id + '">' + I('edit') + '</button></td></tr>'; }).join('') + '</tbody></table></div></div></div>' +
+          '<div class="tbl-wrap"><table class="tbl"><tbody>' + d.methods.map(function (m, i) { return '<tr><td><b>' + (m.provider === 'manual' ? '<span style="display:inline-block;width:16px;height:16px;vertical-align:-3px;margin-right:6px;color:var(--blue)">' + I(m.icon || 'bank') + '</span>' : '') + esc(m.name) + '</b><br><small class="mut">' + esc(m.provider === 'manual' ? 'custom · ' + (m.currency || 'USD') + (m.currency && m.currency !== 'USD' ? ' @ ' + m.rate : '') : m.provider) + ' · ' + (m.scope === 'local' ? m.countries.map(SV.flag).join(' ') || '<b style="color:var(--coral)">no countries</b>' : 'everyone') + '</small>' + (m.warnings || []).map(function (w) { return '<div class="note warn" style="margin-top:6px;padding:8px 10px;font-size:12.5px">' + esc(w) + '</div>'; }).join('') + '</td><td>' + (m.active ? A.tag('on', 'mint') : A.tag('off')) + '</td><td class="acts"><button class="btn sm ghost" data-mv="' + m.id + '" data-dir="-1" aria-label="Move up"' + (i === 0 ? ' disabled' : '') + '>↑</button><button class="btn sm ghost" data-mv="' + m.id + '" data-dir="1" aria-label="Move down"' + (i === d.methods.length - 1 ? ' disabled' : '') + '>↓</button><button class="btn sm ghost" data-m="' + m.id + '">' + I('edit') + '</button></td></tr>'; }).join('') + '</tbody></table></div></div></div>' +
         '<div class="box" style="margin-top:16px"><div class="box-head"><div><h3>' + SV.tile('gift', 'var(--pink)', 28) + 'Coupons</h3><p>Codes people type at checkout. The launch offer uses one of these.</p></div><button class="btn sm" id="newCoupon">' + I('plus') + 'New coupon</button></div>' +
           (d.coupons.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Code</th><th>Discount</th><th>Plans</th><th>Rules</th><th class="num">Used</th><th>Ends</th><th>On</th><th></th></tr></thead><tbody>' + d.coupons.map(function (c) {
             return '<tr><td class="mono"><b>' + esc(c.code) + '</b></td><td>' + (c.percent ? c.percent + '% off' : SV.money(c.amount_off) + ' off') + '</td><td>' + esc(c.plans || 'all') + '</td><td><small>' + [c.intervals ? c.intervals + 'ly only' : '', c.first_purchase_only ? 'first purchase' : ''].filter(Boolean).join(' · ') + '</small></td><td class="num">' + c.uses + (c.max_uses ? ' / ' + c.max_uses : '') + '</td><td>' + (c.ends_at ? SV.date(c.ends_at) : '<span class="mut">never</span>') + '</td><td>' + (c.active ? A.tag('on', 'mint') : A.tag('off')) + '</td><td class="acts"><button class="btn sm ghost" data-c="' + esc(c.code) + '">' + I('edit') + '</button></td></tr>';
           }).join('') + '</tbody></table></div>' : '<p class="mut">No coupons yet.</p>') + '</div>' +
-        '<div class="box" style="margin-top:16px"><div class="box-head"><div><h3>' + SV.tile('layers', 'var(--blue)', 28) + 'Orders</h3><p>Pending crypto orders confirm on their own. Use “Check” to ask Gatevoo now, or mark a bank transfer paid.</p></div>' +
-          '<div class="seg">' + [['', 'All'], ['pending', 'Pending'], ['paid', 'Paid'], ['refunded', 'Refunded'], ['charged_back', 'Chargebacks'], ['failed', 'Failed']].map(function (o) { return '<button data-st="' + o[0] + '"' + (st === o[0] ? ' class="on"' : '') + '>' + o[1] + '</button>'; }).join('') + '</div></div>' +
+        '<div class="box" style="margin-top:16px"><div class="box-head"><div><h3>' + SV.tile('layers', 'var(--blue)', 28) + 'Orders</h3><p>Crypto orders confirm on their own (“Check” asks Gatevoo now). Custom-method payments wait in “Review”: look at the proof, then approve or reject.' + (d.review ? ' <b>' + d.review + ' waiting for review.</b>' : '') + '</p></div>' +
+          '<div class="seg">' + [['', 'All'], ['review', 'Review' + (d.review ? ' (' + d.review + ')' : '')], ['pending', 'Pending'], ['paid', 'Paid'], ['rejected', 'Rejected'], ['expired', 'Expired'], ['refunded', 'Refunded'], ['charged_back', 'Chargebacks'], ['failed', 'Failed']].map(function (o) { return '<button data-st="' + o[0] + '"' + (st === o[0] ? ' class="on"' : '') + '>' + o[1] + '</button>'; }).join('') + '</div></div>' +
           (orders.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Ref</th><th>Who</th><th>Plan</th><th class="num">Amount</th><th>Via</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>' + orders.map(function (o) {
-            return '<tr><td class="mono">' + esc(o.ref) + '</td><td>' + esc(o.email) + '</td><td>' + esc(o.plan || o.plan_id) + ' · ' + esc(o.interval) + 'ly</td><td class="num">' + SV.money(o.amount_usd) + (o.coupon ? '<br><small class="mut">' + esc(o.coupon) + '</small>' : '') + '</td><td>' + esc(o.provider) + '</td><td>' + A.status(o.status) + '</td><td>' + A.when(o.created_at) + '</td><td class="acts">' +
-              (o.status === 'pending' ? (o.provider === 'gatevoo' ? '<button class="btn sm ghost" data-check="' + esc(o.ref) + '">Check</button>' : '') + '<button class="btn sm ghost" data-paid="' + esc(o.ref) + '">Mark paid</button>' : '') +
+            return '<tr><td class="mono">' + esc(o.ref) + '</td><td>' + esc(o.email) + '</td><td>' + esc(o.plan || o.plan_id) + ' · ' + esc(o.interval) + 'ly</td><td class="num">' + SV.money(o.amount_usd) + (o.pay_currency && o.pay_currency !== 'USD' ? '<br><small class="mut">' + esc(o.pay_amount + ' ' + o.pay_currency) + '</small>' : '') + (o.coupon ? '<br><small class="mut">' + esc(o.coupon) + '</small>' : '') + '</td><td>' + esc(o.provider) + '</td><td>' + A.status(o.status) + '</td><td>' + A.when(o.created_at) + '</td><td class="acts">' +
+              (o.provider === 'manual' && ['pending', 'review', 'expired', 'rejected'].indexOf(o.status) >= 0 ? '<button class="btn sm' + (o.status === 'review' ? '' : ' ghost') + '" data-review="' + esc(o.ref) + '">' + (o.status === 'review' ? 'Review' : 'Open') + '</button>' : '') +
+              (o.status === 'pending' && o.provider !== 'manual' ? (o.provider === 'gatevoo' ? '<button class="btn sm ghost" data-check="' + esc(o.ref) + '">Check</button>' : '') + '<button class="btn sm ghost" data-paid="' + esc(o.ref) + '">Mark paid</button>' : '') +
               (o.status === 'paid' ? '<button class="btn sm ghost" data-refund="' + esc(o.ref) + '" data-amount="' + o.amount_usd + '">Refund</button>' : '') +
               (o.status === 'paid' || o.status === 'refunded' ? '<button class="btn sm ghost" data-cb="' + esc(o.ref) + '" data-amount="' + o.amount_usd + '">Chargeback</button>' : '') + '</td></tr>';
           }).join('') + '</tbody></table></div>' : '<div class="empty"><h3>No orders yet</h3><p>Orders show here the moment someone starts a checkout.</p></div>') + '</div>';
       $('#cpHook').onclick = function () { SV.copy(g.webhook_url, 'Webhook URL'); };
-      $('#gvPing').onclick = function () { A.call('POST', '/api/admin/payments/gatevoo/ping', {}, this).then(function (x) { SV.toast(x.message, { bad: !x.ok }); }); };
+      $('#gvPing').onclick = function () { A.call('POST', '/api/admin/payments/gatevoo/ping', {}, this).then(function (x) { if (!x) return; SV.toast(x.ok ? 'Gatevoo connection works' : 'Gatevoo connection failed', { bad: !x.ok }); $('#gvResult').innerHTML = '<div class="note' + (x.ok ? '' : ' warn') + '">' + (x.ok ? '✓ ' : '✗ ') + esc(x.message) + '</div>'; }); };
       $('#newMethod').onclick = function () { methodModal(null); };
       SV.$$('[data-m]', view).forEach(function (b) { b.onclick = function () { methodModal(d.methods.filter(function (m) { return String(m.id) === b.dataset.m; })[0]); }; });
       $('#newCoupon').onclick = function () { couponModal(null); };
@@ -334,17 +363,23 @@
       SV.$$('[data-paid]', view).forEach(function (b) { b.onclick = function () { SV.confirm('Mark ' + b.dataset.paid + ' as paid?', 'Their plan starts now and they get a receipt email. Only do this when the money has arrived.', 'Mark paid').then(function (ok) { if (ok) A.call('POST', '/api/admin/orders/' + b.dataset.paid + '/paid', {}, b, 'Marked paid. Plan is active.').then(reload); }); }; });
       SV.$$('[data-refund]', view).forEach(function (b) { b.onclick = function () { SV.confirm('Refund ' + b.dataset.refund + '?', 'Record that ' + SV.money(Number(b.dataset.amount)) + ' went back to the customer (send the money yourself first). Their plan ends now. Affiliate commission is not reversed.', 'Record refund').then(function (ok) { if (ok) A.call('POST', '/api/admin/orders/' + b.dataset.refund + '/refund', {}, b, 'Refund recorded.').then(reload); }); }; });
       SV.$$('[data-cb]', view).forEach(function (b) { b.onclick = function () { SV.confirm('Chargeback on ' + b.dataset.cb + '?', 'The payment was disputed and taken back. Their plan ends now and the affiliate commission on it is reversed in VooSquare.', 'Record chargeback', true).then(function (ok) { if (ok) A.call('POST', '/api/admin/orders/' + b.dataset.cb + '/chargeback', {}, b, 'Chargeback recorded.').then(reload); }); }; });
+      SV.$$('[data-mv]', view).forEach(function (b) { b.onclick = function () { A.call('POST', '/api/admin/payments/methods/' + b.dataset.mv + '/move', { dir: Number(b.dataset.dir) }, b).then(reload); }; });
+      SV.$$('[data-review]', view).forEach(function (b) { b.onclick = function () { reviewModal(orders.filter(function (o) { return o.ref === b.dataset.review; })[0]); }; });
       SV.$$('[data-check]', view).forEach(function (b) { b.onclick = function () { A.call('POST', '/api/admin/orders/' + b.dataset.check + '/check', {}, b).then(function (x) { SV.toast(x.ok ? 'Payment confirmed' : (x.reason || 'Not paid yet'), { bad: !x.ok }); if (x.ok) reload(); }); }; });
     }).catch(SV.fail);
   };
   function methodModal(mt) {
-    mt = mt || { name: '', provider: 'manual', scope: 'local', countries: [], description: '', instructions: '', coins: [], active: true, sort: 10 };
+    mt = mt || { name: '', provider: 'manual', scope: 'local', countries: [], description: '', instructions: '', coins: [], details: [], icon: 'bank', currency: 'USD', rate: 1, proof_mode: 'either', active: true, sort: 100 };
     var m = SV.modal('<h2>' + (mt.id ? 'Edit payment method' : 'New payment method') + '</h2><form class="form" style="margin-top:14px">' +
-      A.field('name', 'Name people see', mt.name, { ph: 'Bank transfer (Brazil)' }) + A.field('provider', 'Type', mt.provider, { options: [['gatevoo', 'Gatevoo crypto'], ['manual', 'Manual (you confirm)']] }) +
+      A.field('name', 'Name people see', mt.name, { ph: 'Bank transfer (Brazil)' }) + A.field('provider', 'Type', mt.provider, { options: [['manual', 'Custom (bank, mobile money, wallet… you approve)'], ['gatevoo', 'Gatevoo crypto (automatic)']] }) +
       A.field('scope', 'Who sees it', mt.scope, { options: [['global', 'Everyone'], ['local', 'Only some countries']] }) + A.field('countries', 'Countries (codes)', (mt.countries || []).join(', '), { ph: 'BR, MX' }) +
       A.field('description', 'Short description', mt.description, { full: true }) +
       A.field('coins', 'Coins (Gatevoo only)', (mt.coins || []).map(function (c) { return c.id || c; }).join(', '), { ph: 'USDT_TRC20, BTC' }) + A.field('sort', 'Order', mt.sort || 0, { type: 'number' }) +
-      A.field('instructions', 'Payment instructions (manual only)', mt.instructions || '', { type: 'textarea', full: true, hint: 'Shown after checkout. Include account details and ask them to put the order reference in the note.' }) +
+      A.field('icon', 'Icon (custom only)', mt.icon || 'bank', { options: [['bank', 'Bank'], ['phone', 'Mobile money'], ['wallet', 'Wallet / crypto address'], ['card', 'Card'], ['cash', 'Cash'], ['globe', 'Other']] }) +
+      A.field('proof_mode', 'Proof the customer adds', mt.proof_mode || 'either', { options: [['either', 'Reference or screenshot'], ['text', 'Reference only'], ['image', 'Screenshot only'], ['both', 'Reference and screenshot'], ['none', 'Nothing (just “I’ve paid”)']] }) +
+      A.field('currency', 'Currency (custom only)', mt.currency || 'USD', { ph: 'USD, NGN, KES, USDT' }) + A.field('rate', 'Rate: 1 USD = ? of that currency', mt.rate || 1, { type: 'number', hint: 'Use 1 for USD or USDT. Orders keep the rate they were created with.' }) +
+      A.field('details', 'Account details (one per line, “Label: value”)', (mt.details || []).map(function (x) { return (x.label ? x.label + ': ' : '') + x.value; }).join('\n'), { type: 'textarea', full: true, hint: 'Each line gets a Copy button at checkout. E.g. “Bank: GTBank”, “Account number: 0123456789”, “USDT (TRC20) address: T…”.' }) +
+      A.field('instructions', 'Payment instructions', mt.instructions || '', { type: 'textarea', full: true, hint: 'Shown after checkout, under the amount and the account details.' }) +
       A.sw('active', 'Switched on', mt.active) +
       '</form><div class="actions">' + (mt.id ? '<button class="btn ghost" data-del style="margin-right:auto">' + I('trash') + 'Delete</button>' : '') + '<button class="btn ghost" data-no>Cancel</button><button class="btn" data-ok>' + I('check') + 'Save</button></div>', { wide: true });
     m.el.querySelector('[data-no]').onclick = function () { m.close(); };
@@ -353,6 +388,21 @@
     m.el.querySelector('[data-ok]').onclick = function () {
       A.call(mt.id ? 'PATCH' : 'POST', '/api/admin/payments/methods' + (mt.id ? '/' + mt.id : ''), A.read(m.el.querySelector('form')), this, 'Saved').then(function () { m.close(); reload(); });
     };
+  }
+  function reviewModal(o) {
+    if (!o) return;
+    var m = SV.modal('<span class="eyebrow">Order ' + esc(o.ref) + ' · ' + esc(o.status) + '</span><h2 style="margin-top:8px">' + esc((o.meta.pay || {}).name || 'Custom payment') + '</h2>' +
+      '<div class="stack" style="gap:8px;margin-top:10px"><div><b>' + esc(o.email) + '</b> · ' + esc(o.plan || o.plan_id) + ' · ' + esc(o.interval) + 'ly</div>' +
+      '<div>Should receive: <b>' + esc((o.pay_amount != null ? o.pay_amount : o.amount_usd) + ' ' + (o.pay_currency || 'USD')) + '</b>' + (o.pay_currency && o.pay_currency !== 'USD' ? ' (= ' + SV.money(o.amount_usd) + ')' : '') + (o.coupon ? ' · code ' + esc(o.coupon) : '') + '</div>' +
+      '<div>Reference: <b class="mono">' + (o.proof ? esc(o.proof) : '<span class="mut">none</span>') + '</b>' + (o.proof_at ? ' <small class="mut">· sent ' + A.when(o.proof_at) + '</small>' : '') + '</div>' +
+      (o.proof_file ? '<a href="/api/admin/orders/' + encodeURIComponent(o.ref) + '/proof" target="_blank" rel="noopener"><img src="/api/admin/orders/' + encodeURIComponent(o.ref) + '/proof" alt="Payment screenshot" style="max-width:100%;max-height:360px;border-radius:14px;border:1px solid var(--line)"></a>' : '<small class="mut">No screenshot.</small>') +
+      (o.review_note ? '<div class="note warn">' + esc(o.review_note) + '</div>' : '') +
+      (['pending', 'review', 'expired'].indexOf(o.status) >= 0 ? '<form class="form" style="margin-top:6px">' + A.field('reason', 'Reason if you reject (the customer sees it)', '', { type: 'textarea', full: true, ph: 'We couldn’t find a transfer with this reference.' }) + '</form>' : '') + '</div>' +
+      '<div class="actions"><button class="btn ghost" data-no>Close</button>' + (['pending', 'review', 'expired'].indexOf(o.status) >= 0 ? '<button class="btn ghost" data-rej style="color:var(--coral)">Reject</button>' : '') + '<button class="btn" data-ok>' + I('check') + 'Approve, plan on</button></div>', { wide: true });
+    m.el.querySelector('[data-no]').onclick = function () { m.close(); };
+    var rj = m.el.querySelector('[data-rej]');
+    if (rj) rj.onclick = function () { A.call('POST', '/api/admin/orders/' + encodeURIComponent(o.ref) + '/reject', { reason: m.el.querySelector('[name=reason]').value }, rj, 'Rejected. The customer was told why.').then(function () { m.close(); reload(); }); };
+    m.el.querySelector('[data-ok]').onclick = function () { var b = this; SV.confirm('Approve ' + o.ref + '?', 'Only when the money has arrived. Their plan starts now and they get a receipt.', 'Approve').then(function (ok) { if (ok) A.call('POST', '/api/admin/orders/' + encodeURIComponent(o.ref) + '/approve', {}, b, 'Approved. Plan is active.').then(function () { m.close(); reload(); }); }); };
   }
   function couponModal(c) {
     var isNew = !c;
@@ -496,7 +546,7 @@
           A.field('w_active', 'Weight: still active', sc.w_active, { type: 'number' }) +
         '</form><div class="save-bar"><button class="btn" data-save="score" data-f="scF">' + I('check') + 'Save and re-score</button></div></div>' +
         '<div class="stack"><div class="box"><h3>' + SV.tile('layers', 'var(--blue)', 28) + 'Niches</h3><p>The niche chips users filter by. Comma separated.</p><textarea class="input" id="niTxt">' + esc(s.niches.join(', ')) + '</textarea><div class="save-bar"><button class="btn" id="niSave">' + I('check') + 'Save</button></div></div>' +
-        '<div class="box"><h3>' + SV.tile('card', 'var(--mint)', 28) + 'Billing</h3><form class="form" id="biF">' + A.field('renew_reminder_days', 'Remind before renewal (days)', bl.renew_reminder_days, { type: 'number' }) + A.field('grace_days', 'Grace after expiry (days)', bl.grace_days, { type: 'number' }) +
+        '<div class="box"><h3>' + SV.tile('card', 'var(--mint)', 28) + 'Billing</h3><form class="form" id="biF">' + A.field('renew_reminder_days', 'Remind before renewal (days)', bl.renew_reminder_days, { type: 'number' }) + A.field('grace_days', 'Grace after expiry (days)', bl.grace_days, { type: 'number' }) + A.field('pending_expire_days', 'Unpaid orders expire after (days)', bl.pending_expire_days || 7, { type: 'number', hint: 'Orders are never deleted; you can still approve an expired one.' }) +
         '</form><div class="save-bar"><button class="btn" data-save="billing" data-f="biF">' + I('check') + 'Save</button></div></div></div></div>';
       SV.$$('[data-save]', view).forEach(function (b) { b.onclick = function () { A.call('PATCH', '/api/admin/settings/' + b.dataset.save, { value: A.read($('#' + b.dataset.f)) }, b, 'Saved'); }; });
       SV.$$('[data-pl] button', view).forEach(function (b) { b.onclick = function () { SV.$$('button', b.parentNode).forEach(function (x) { x.classList.toggle('on', x === b); }); }; });

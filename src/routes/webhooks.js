@@ -8,7 +8,10 @@ module.exports = function (app) {
   // We never trust the body alone: the invoice is re-read from the API.
   app.post('/webhooks/gatevoo', (req, res) => {
     const gatevoo = require('../services/gatevoo');
-    if (!gatevoo.signatureOk(req.rawBody || Buffer.from(''), req.headers['x-gatevoo-signature'])) throw new HttpError(401, 'Bad signature');
+    if (!gatevoo.signatureOk(req.rawBody || Buffer.from(''), req.headers['x-gatevoo-signature'], undefined, req.headers['x-gatevoo-timestamp'])) {
+      console.error('[gatevoo] webhook refused: ' + (require('../config').gatevoo.webhookSecret ? 'signature does not match GATEVOO_WEBHOOK_SECRET' : 'GATEVOO_WEBHOOK_SECRET missing'));
+      throw new HttpError(401, 'Bad signature');
+    }
     const inv = (req.body || {}).data || (req.body || {}).invoice || {};
     res.json({ ok: true });
     const ref = inv.reference || inv.order_id;

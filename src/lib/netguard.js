@@ -85,4 +85,16 @@ function safeGet(raw, { maxBytes = 120 * 1024 * 1024, timeoutMs = 90000, maxRedi
   return hop(String(raw), maxRedirects);
 }
 
-module.exports = { safeGet, checkUrl, privateIp, BlockedError };
+// API calls that carry one of our secret keys (AI providers) may only go to their fixed hosts over https.
+// Outside production a test/mock address (e.g. http://127.0.0.1:4971) is allowed when allowOverride is true.
+const API_HOSTS = ['api.anthropic.com', 'openrouter.ai', 'api.openai.com'];
+function checkApiUrl(raw, { hosts = API_HOSTS, allowOverride = false } = {}) {
+  let u;
+  try { u = new URL(String(raw)); } catch { throw new BlockedError('Not a valid API address'); }
+  if (u.username || u.password) throw new BlockedError('API addresses with a user name are not allowed');
+  if (allowOverride) return u;
+  if (u.protocol !== 'https:' || (u.port && u.port !== '443') || !hosts.includes(u.hostname)) throw new BlockedError('API calls may only go to ' + hosts.join(', '));
+  return u;
+}
+
+module.exports = { safeGet, checkUrl, checkApiUrl, privateIp, BlockedError, API_HOSTS };

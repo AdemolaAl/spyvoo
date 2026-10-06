@@ -57,6 +57,11 @@
     radar: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l6-6"/>',
     team: '<circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c.8-3.5 3.2-5.5 6-5.5s5.2 2 6 5.5M15 15c2.5 0 4.6 1.6 5.5 5"/>',
     card: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/>',
+    bank: '<path d="M3 10l9-6 9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 20h18"/>',
+    phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18h2"/>',
+    wallet: '<path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11"/><circle cx="16" cy="13.5" r="1.3"/>',
+    cash: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/>',
+    upload: '<path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
     sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'
   };
   SV.I = function (n, extra) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"' + (extra || '') + '>' + (P[n] || '') + '</svg>'; };
@@ -83,7 +88,10 @@
   SV.api = function (method, path, body) {
     var opt = { method: method, headers: { 'x-sv': '1', Accept: 'application/json' }, credentials: 'same-origin' };
     if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
-    return fetch(path, opt).then(function (r) {
+    return fetch(path, opt).catch(function () {
+      // Network down or the request never reached Spyvoo (e.g. the phone lost signal).
+      var e = new Error('Couldn’t reach Spyvoo. Check your connection and try again.'); e.status = 0; e.data = { code: 'network' }; throw e;
+    }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (d) {
         if (r.status === 401) { location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search); throw new Error('Please log in.'); }
         if (!r.ok) {

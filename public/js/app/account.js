@@ -45,8 +45,13 @@
         SV.$$('[data-buy]').forEach(function (b) { b.onclick = function () { checkout(d, b.dataset.buy, yearly ? 'year' : 'month', coupon); }; });
         $('#orders').innerHTML = d.orders.length ? d.orders.map(function (o) {
           return '<div class="li"><span class="thumbsm" style="display:grid;place-items:center;background:var(--blue-l);color:var(--blue)">' + I('card') + '</span><span class="grow"><b>' + esc(o.plan) + ' · ' + o.interval + 'ly · ' + SV.money(o.amount) + '</b><small>' + esc(o.ref) + ' · ' + SV.date(o.created_at) + (o.coupon ? ' · ' + esc(o.coupon) : '') + (o.tx_url ? ' · <a href="' + esc(o.tx_url) + '" target="_blank" rel="noopener" style="color:var(--blue)">transaction</a>' : '') + '</small></span>' +
-            (o.status === 'pending' && o.pay_url ? '<a class="btn sm" href="' + esc(o.pay_url) + '">Pay</a>' : '<span class="status ' + o.status + '">' + o.status.replace(/_/g, ' ') + '</span>') + '</div>';
+            (o.status === 'pending' && o.pay_url ? '<a class="btn sm" href="' + esc(o.pay_url) + '">Pay</a>'
+              : o.pay && (o.status === 'pending' || o.status === 'expired') ? '<button class="btn sm" type="button" data-pay="' + esc(o.ref) + '">' + (o.status === 'expired' ? 'Paid already?' : 'Pay') + '</button>'
+              : o.pay && o.status === 'review' ? '<button class="status review" type="button" data-pay="' + esc(o.ref) + '">In review</button>'
+              : '<span class="status ' + o.status + '">' + o.status.replace(/_/g, ' ') + '</span>') + '</div>' +
+            (o.status === 'rejected' && o.review_note ? '<p class="rej-note">' + esc(o.review_note) + '</p>' : '');
         }).join('') : '<p class="mut" style="font-weight:600">No payments yet.</p>';
+        SV.$$('[data-pay]').forEach(function (b) { b.onclick = function () { var o = d.orders.filter(function (x) { return x.ref === b.dataset.pay; })[0]; if (o && o.pay) payModal(o.pay); }; });
         team();
       }
       draw();
@@ -79,11 +84,11 @@
     var methods = d.methods;
     var md = SV.modal('<span class="eyebrow">Checkout</span><h2 style="margin-top:8px">' + esc(plan.name) + ' · ' + interval + 'ly</h2>' +
       (methods.length ? '<div class="field" style="margin-top:14px"><label>Pay with</label><div class="methods">' + methods.map(function (m, i) {
-        return '<label class="method"><input type="radio" name="pm" value="' + m.id + '"' + (i === 0 ? ' checked' : '') + '><span style="flex:1"><b>' + esc(m.name) + '</b><small>' + esc(m.description) + '</small>' +
+        return '<label class="method"><input type="radio" name="pm" value="' + m.id + '"' + (i === 0 ? ' checked' : '') + '>' + (m.provider === 'manual' ? '<span class="pm-ic">' + I(m.icon || 'bank') + '</span>' : '') + '<span style="flex:1;min-width:0"><b>' + esc(m.name) + '</b><small>' + esc(m.description) + (m.provider === 'manual' && m.currency && m.currency !== 'USD' ? ' Pay in ' + esc(m.currency) + '.' : '') + '</small>' +
           '</span></label>';
       }).join('') + '</div><div id="coinBox"></div></div>' : '<p class="mut">No payment method is available for your country yet. Contact support.</p>') +
       '<div class="field" style="margin-top:12px"><label>Discount code</label><div style="display:flex;gap:8px"><input class="input" id="cpn" placeholder="e.g. SPYLAUNCH" value="' + esc(coupon || '') + '" style="text-transform:uppercase"><button class="btn ghost" type="button" id="cpnGo">Apply</button></div><small id="cpnMsg" style="font-weight:700"></small></div>' +
-      '<div class="sum" id="sum"></div><div class="actions"><button class="btn grad block" type="button" id="pay"' + (methods.length ? '' : ' disabled') + '>' + I('lock') + 'Continue to payment</button></div>' +
+      '<div class="sum" id="sum"></div><p id="payErr" class="pay-err" role="alert" hidden></p><div class="actions"><button class="btn grad block" type="button" id="pay"' + (methods.length ? '' : ' disabled') + '>' + I('lock') + 'Continue to payment</button></div>' +
       '<p class="mut" style="font-size:12px;font-weight:600;margin:10px 0 0;text-align:center">Secure checkout. Your plan switches on as soon as the payment confirms.</p>');
     var el = md.el, applied = '';
     function coins() {
@@ -102,15 +107,78 @@
     quote();
     el.querySelector('#cpnGo').onclick = quote;
     el.querySelector('#pay').onclick = function () {
+      var eb = el.querySelector('#payErr'); if (eb) eb.hidden = true;
       var b = this, pm = el.querySelector('input[name=pm]:checked'), coin = el.querySelector('input[name=coin]:checked');
       if (!pm) return;
       b.disabled = true; b.innerHTML = '<span class="spin"></span>Creating your order…';
       SV.post('/api/app/checkout', { plan: planId, interval: interval, method_id: Number(pm.value), coupon: applied, coin: coin ? coin.value : undefined }).then(function (r) {
         if (r.checkout_url) { location.href = r.checkout_url; return; }
         md.close(true);
+        if (r.pay) { payModal(r.pay); return; }
         SV.modal('<span class="eyebrow">Order ' + esc(r.ref) + '</span><h2 style="margin-top:8px">Almost done</h2><p style="font-weight:600;white-space:pre-wrap">' + esc(r.instructions || 'We will confirm your payment shortly.') + '</p><div class="sum"><div class="total"><span>Amount</span><span>' + SV.money(r.amount) + '</span></div></div><div class="actions"><a class="btn" href="/app/plan">Done</a></div>');
-      }).catch(function (e) { b.disabled = false; b.innerHTML = I('lock') + 'Continue to payment'; SV.fail(e); });
+      }).catch(function (e) {
+        b.disabled = false; b.innerHTML = I('lock') + 'Continue to payment';
+        // Say what went wrong right above the button (the server sends a specific, safe reason).
+        var box = el.querySelector('#payErr'), d = e.data || {};
+        var msg = e.message || 'The payment couldn’t start. Please try again.';
+        if (/^gatevoo_/.test(d.code || '') && d.other_methods) msg += ' You can also pick another way to pay above.';
+        if (box) { box.textContent = msg; box.hidden = false; box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } else SV.fail(e);
+      });
     };
+  }
+
+  /* Custom payment method (bank transfer, mobile money, wallet...): exact amount, account details with copy buttons,
+     instructions, then a reference and/or a screenshot. The order waits for the team to approve it. */
+  function money2(n, cur) { var v = Number(n); return (v % 1 ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 }) : v.toLocaleString('en-US')) + ' ' + cur; }
+  function shrink(file) {
+    // Phone screenshots can be large: resize to 1600px JPEG when over 1.5 MB.
+    return new Promise(function (ok, no) {
+      var rd = new FileReader();
+      rd.onerror = function () { no(new Error('Couldn’t read that file. Try another screenshot.')); };
+      rd.onload = function () {
+        if (file.size <= 1.5e6) return ok(rd.result);
+        var img = new Image();
+        img.onerror = function () { no(new Error('That file isn’t an image we can read. Use a PNG or JPG.')); };
+        img.onload = function () { var k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.85)); };
+        img.src = rd.result;
+      };
+      rd.readAsDataURL(file);
+    });
+  }
+  function payModal(p) {
+    var copyRow = function (label, value, key) { return '<div class="pay-row"><span><small>' + esc(label) + '</small><b>' + esc(value) + '</b></span><button class="btn ghost sm" type="button" data-cp="' + key + '" aria-label="Copy ' + esc(label) + '">' + I('copy') + '</button></div>'; };
+    var vals = { amt: String(p.amount), ref: p.ref };
+    (p.details || []).forEach(function (x, i) { vals['d' + i] = x.value; });
+    var review = p.status === 'review', mode = p.proof_mode || 'either';
+    var md = SV.modal('<span class="eyebrow">Order ' + esc(p.ref) + '</span><h2 style="margin-top:8px">' + (review ? 'Payment in review' : 'Pay with ' + esc(p.name)) + '</h2>' +
+      (review ? '<div class="pay-state">' + I('clock') + '<span>We got your proof' + (p.proof ? ' (' + esc(p.proof) + ')' : '') + '. Our team is checking it and will switch your plan on. You’ll get an email.</span></div>' : '') +
+      '<div class="pay-amount"><small>Send exactly</small><b class="tnum">' + esc(money2(p.amount, p.currency)) + '</b>' + (p.currency !== 'USD' ? '<small>= ' + SV.money(p.amount_usd) + ' at a locked rate</small>' : '') + (p.coupon ? '<small style="color:var(--mint)">' + esc(p.coupon) + ' applied (was ' + SV.money(p.list_usd) + ')</small>' : '') + '<button class="btn ghost sm" type="button" data-cp="amt">' + I('copy') + 'Copy amount</button></div>' +
+      '<div class="pay-rows">' + (p.details || []).map(function (x, i) { return copyRow(x.label || 'Detail', x.value, 'd' + i); }).join('') + copyRow('Payment note / reference', p.ref, 'ref') + '</div>' +
+      (p.instructions ? '<p class="pay-ins">' + esc(p.instructions) + '</p>' : '') +
+      (mode === 'none' ? '<div class="actions"><button class="btn grad block" type="button" id="prfGo">' + I('check') + 'I’ve paid</button></div>' :
+      '<form id="prfF" class="pay-proof"><h3>' + (review ? 'Update your proof' : 'After you pay') + '</h3>' +
+        (mode !== 'image' ? '<div class="field"><label for="prfT">Transfer reference or transaction ID' + (mode === 'either' ? ' (or a screenshot)' : '') + '</label><input class="input" id="prfT" maxlength="300" autocomplete="off" placeholder="e.g. FT2410061234" value="' + esc(p.proof || '') + '"></div>' : '') +
+        (mode !== 'text' ? '<div class="field"><label for="prfI">Screenshot of the payment' + (mode === 'either' ? ' (or type a reference above)' : '') + '</label><label class="file-pick"><input type="file" id="prfI" accept="image/png,image/jpeg,image/webp">' + I('upload') + '<span id="prfN">' + (p.has_screenshot ? 'Screenshot added. Tap to replace' : 'Choose a screenshot') + '</span></label></div>' : '') +
+        '<p id="prfErr" class="pay-err" role="alert" hidden></p><div class="actions"><button class="btn grad block" type="submit" id="prfGo">' + I('check') + (review ? 'Update proof' : 'I’ve paid, send for review') + '</button></div></form>') +
+      '<p class="mut" style="font-size:12px;font-weight:600;margin:10px 0 0;text-align:center">Your price is locked on this order. We switch your plan on as soon as we confirm the money arrived.</p>');
+    var el = md.el;
+    SV.$$('[data-cp]', el).forEach(function (b) { b.onclick = function () { SV.copy(vals[b.dataset.cp], b.dataset.cp === 'amt' ? 'Amount' : b.dataset.cp === 'ref' ? 'Reference' : 'Detail'); }; });
+    var fi = el.querySelector('#prfI'); if (fi) fi.onchange = function () { el.querySelector('#prfN').textContent = fi.files[0] ? fi.files[0].name : 'Choose a screenshot'; };
+    var send = function (e) {
+      if (e) e.preventDefault();
+      var b = el.querySelector('#prfGo'), err = el.querySelector('#prfErr'), t = el.querySelector('#prfT'), f = fi && fi.files[0];
+      if (err) err.hidden = true;
+      b.disabled = true; var label = b.innerHTML; b.innerHTML = '<span class="spin"></span>Sending…';
+      (f ? shrink(f) : Promise.resolve(undefined)).then(function (img) {
+        return SV.post('/api/app/orders/' + encodeURIComponent(p.ref) + '/proof', { reference: t ? t.value : '', image: img });
+      }).then(function (r) {
+        md.close(true);
+        // Refresh billing history first (a re-render closes open layers), then show the "in review" card.
+        if (location.pathname === '/app/plan') { history.replaceState({}, '', '/app/plan'); SV.state.keepScroll = true; SV.render(); }
+        payModal(r.pay);
+      }).catch(function (x) { b.disabled = false; b.innerHTML = label; if (err) { err.textContent = x.message; err.hidden = false; } else SV.fail(x); });
+    };
+    var form = el.querySelector('#prfF'); if (form) form.onsubmit = send; else el.querySelector('#prfGo').onclick = send;
   }
 
   function team() {

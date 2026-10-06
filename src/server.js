@@ -58,7 +58,7 @@ if (require.main === module) {
     const providers = require('./providers');
     console.log('Spyvoo running on ' + config.appUrl + ' (port ' + config.port + ', ' + config.env + ')');
     if (!providers.get().configured()) console.log('  Ads: provider not connected yet. Sample ads are shown. Add APIFY_TOKEN (or save it in Admin → Ad data & AI).');
-    if (!config.ai.key) console.log('  AI: basic breakdowns (set ANTHROPIC_API_KEY for Claude)');
+    { const r = require('./services/llm').resolve(); console.log('  AI: ' + (r.key ? r.label + ', model ' + r.model + (r.fallbacks.length ? ' (+' + r.fallbacks.length + ' fallbacks)' : '') : 'basic breakdowns (' + r.label + ' selected; set ' + r.envKey + ')')); }
     if (config.mail.provider === 'log') console.log('  Email: printed to the console (set MAIL_PROVIDER + MAIL_API_KEY to send)');
     const vs = require('./services/voosquare');
     console.log('  VooSquare: ' + (vs.enabled() ? 'Voo ID login on' : 'login off') + ', events ' + (vs.eventsOn() ? 'on' : 'off') + (config.voo.on ? '' : ' (VOO_CONNECT=off)'));

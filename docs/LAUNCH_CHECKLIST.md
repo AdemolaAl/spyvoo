@@ -11,7 +11,7 @@ Run `npm run check -- --ping` in the Railway shell. When it says **Ready to laun
 - [ ] Tracking rules cover your niches and countries; first runs finished in the **Job monitor**
 - [ ] Sample ads removed (**Ads manager → Remove sample ads**) once real ads are in
 - [ ] Email domain verified; test email received (not in spam); `support@spyvoo.com` mailbox works
-- [ ] Gatevoo **Test connection** says Connected; webhook URL pasted into Gatevoo; one real $1 test order (make a coupon)
+- [ ] Gatevoo **Test payment connection** says Connected; webhook URL pasted into Gatevoo; one real $1 test order (make a coupon)
 - [ ] Legal pages read through: `/legal/terms`, `/legal/privacy`, `/legal/refunds`, `/legal/acceptable-use`
 - [ ] Domain + `www` on HTTPS
 - [ ] VooSquare: Spyvoo product has SSO on and both Redirect URIs (`/auth/voosquare/callback` and `/`); `VOO_*` set;

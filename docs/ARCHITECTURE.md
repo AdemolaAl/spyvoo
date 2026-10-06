@@ -37,7 +37,8 @@ src/
     ingest.js          runs tracking rules within the daily budget, saves + de-duplicates ads
     ads.js             scoring, search (FTS5 + filters + relax fallback), plain-English parser, stats
     media.js           downloads images/videos (3 retries), stores on disk or R2 (hand-written S3 SigV4)
-    ai.js              Claude breakdowns, "Make it mine" scripts, search parsing; rule-based fallback
+    ai.js              AI breakdowns, "Make it mine" scripts, search parsing; rule-based fallback
+    llm.js             one complete() for Claude direct, OpenRouter or OpenAI; retries, fallbacks, ai_usage
     library.js         boards + sharing, follows, saved searches, notifications, alert and weekly-report jobs
     account.js         plans, usage limits (402 + upgrade prompt), team seats
     payments.js        payment methods per country, coupons, quotes, checkout, fulfilment, renewals

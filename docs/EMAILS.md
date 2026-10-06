@@ -31,6 +31,7 @@ for Joinvoo, Replyvoo, Castvoo and Vooads taken from Admin → Offer & Voo famil
 | `password-reset` | "Forgot password" | User |
 | `team-invite` | Agency owner invites a teammate | Invitee |
 | `payment-receipt` | An order is paid (crypto, manual or test) | Buyer |
+| `payment-rejected` | An admin rejects a custom-method payment (bank transfer, mobile money…) | Buyer, with the reason |
 | `renewal-reminder` | N days before the plan ends (Admin → Settings → Billing) | Paying user |
 | `plan-expired` | Plan ended and the grace period passed; account moves to Free | User |
 | `advertiser-alert` | A followed advertiser launches new ads | Follower |

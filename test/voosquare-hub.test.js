@@ -42,7 +42,7 @@ test('Spyvoo ↔ VooSquare end to end (real hub)', { skip: DIR ? false : 'no Voo
   sv = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'src/server.js'], {
     cwd: ROOT,
     env: { ...process.env, NODE_ENV: 'test', PORT: String(SV_PORT), APP_URL: SV, DATABASE_PATH: dbFile, MEDIA_DIR: path.join(RUN, 'media'), ADMIN_EMAIL: 'admin@spy.test', ADMIN_PASSWORD: 'admin-pass-123', PAYMENTS_DEMO: 'true', MAIL_PROVIDER: 'log',
-      APIFY_TOKEN: '', ANTHROPIC_API_KEY: '', GATEVOO_API_KEY: '', GATEVOO_WEBHOOK_SECRET: '', DEMO_ADS: 'true', SCHEDULER: 'true', TRUST_PROXY: 'true',
+      APIFY_TOKEN: '', ANTHROPIC_API_KEY: '', AI_PROVIDER: '', OPENROUTER_API_KEY: '', OPENAI_API_KEY: '', GATEVOO_API_KEY: '', GATEVOO_WEBHOOK_SECRET: '', DEMO_ADS: 'true', SCHEDULER: 'true', TRUST_PROXY: 'true',
       VOO_BASE: VS, VOO_CLIENT_ID: cred.clientId, VOO_CLIENT_SECRET: cred.clientSecret, VOO_API_KEY: cred.apiKey, VOO_SIGNAL_SECRET: 'test-signal-secret-0123456789', VOO_FLUSH_MS: '100', VOO_BACKOFF_MS: '50', VOO_CONNECT: 'on' },
     stdio: ['ignore', 'pipe', 'pipe']
   });

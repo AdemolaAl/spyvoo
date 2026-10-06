@@ -5,6 +5,7 @@ const db = require('../db');
 const auth = require('../lib/auth');
 const ads = require('../services/ads');
 const ai = require('../services/ai');
+const llm = require('../services/llm');
 const account = require('../services/account');
 const ingest = require('../services/ingest');
 const media = require('../services/media');
@@ -62,10 +63,10 @@ module.exports = function (app) {
     return {
       ads: ads.stats(), media: media.usage(),
       users: { total: db.one('SELECT COUNT(*) n FROM users').n, active7: db.one('SELECT COUNT(*) n FROM users WHERE last_login >= ?', new Date(now - 7 * DAY).toISOString()).n, paid: db.one("SELECT COUNT(*) n FROM users WHERE plan_id != 'free' AND role != 'admin' AND plan_renews_at > ?", db.now()).n, new7: db.one('SELECT COUNT(*) n FROM users WHERE created_at >= ?', new Date(now - 7 * DAY).toISOString()).n },
-      revenue: { d30: db.one("SELECT COALESCE(SUM(amount_usd), 0) n FROM orders WHERE status = 'paid' AND paid_at >= ?", d30).n, all: db.one("SELECT COALESCE(SUM(amount_usd), 0) n FROM orders WHERE status = 'paid'").n, pending: db.one("SELECT COUNT(*) n FROM orders WHERE status = 'pending'").n },
+      revenue: { d30: db.one("SELECT COALESCE(SUM(amount_usd), 0) n FROM orders WHERE status = 'paid' AND paid_at >= ?", d30).n, all: db.one("SELECT COALESCE(SUM(amount_usd), 0) n FROM orders WHERE status = 'paid'").n, pending: db.one("SELECT COUNT(*) n FROM orders WHERE status = 'pending'").n, review: db.one("SELECT COUNT(*) n FROM orders WHERE status = 'review'").n },
       credits: { spent: ingest.spentToday(), budget: p.daily_budget_usd, left: ingest.budgetLeft() },
       provider: { active: p.active, configured: providers.get().configured(), label: providers.get().label },
-      ai: ai.live(), mail: config.mail.provider !== 'log' && !!config.mail.key, gatevoo: require('../services/gatevoo').mode(), demo_payments: config.pay.demo,
+      ai: ai.live(), mail: config.mail.provider !== 'log' && !!config.mail.key, gatevoo: require('../services/gatevoo').mode(), gatevoo_missing: require('../services/gatevoo').status().missing, gatevoo_error: require('../services/gatevoo').lastError(), demo_payments: config.pay.demo,
       plans: db.all("SELECT plan_id, COUNT(*) n FROM users WHERE plan_id = 'free' OR plan_renews_at > ? GROUP BY plan_id", db.now()),
       charts: {
         ads: series('SELECT COUNT(*) n FROM ads WHERE first_seen_at BETWEEN ? AND ?', 14),
@@ -123,7 +124,23 @@ module.exports = function (app) {
   app.get('/api/admin/provider', req => {
     A(req);
     const p = { ...settings.get('provider') }; const hasToken = !!p.apify_token_enc || !!config.apify.token; delete p.apify_token_enc;
-    return { settings: p, has_token: hasToken, token_from_env: !!config.apify.token, default_actor: config.apify.actor, providers: providers.list(), spent_today: ingest.spentToday(), budget_left: ingest.budgetLeft(), media: media.usage(), ai: { live: ai.live(), model: config.ai.model, transcripts: !!config.ai.transcribeKey } };
+    return { settings: p, has_token: hasToken, token_from_env: !!config.apify.token, default_actor: config.apify.actor, providers: providers.list(), spent_today: ingest.spentToday(), budget_left: ingest.budgetLeft(), media: media.usage(), ai: { live: ai.live(), model: llm.resolve().model, transcripts: !!config.ai.transcribeKey, ...llm.publicInfo(), usage_today: llm.usageToday() } };
+  });
+  // AI provider, OpenRouter model, fallbacks and key. The key is stored encrypted, never sent back (only its last 4
+  // characters), only used for the endpoint it was saved for, and has to be typed again when the provider changes.
+  app.patch('/api/admin/ai', req => {
+    A(req);
+    let r;
+    try { r = llm.update(req.body || {}); } catch (e) { throw new HttpError(e.status || 400, e.message); }
+    audit(req, 'ai_update', [...r.patch, ...r.notes].join(', ') || 'no change');
+    return { ok: true, key_cleared: r.key_cleared, ai: llm.publicInfo() };
+  });
+  app.post('/api/admin/ai/ping', async req => {
+    A(req);
+    const info = llm.publicInfo();
+    if (!info.has_key) return { ok: false, message: info.label + ' has no API key yet.' };
+    try { const x = await llm.complete({ system: 'Reply with the single word: ok', messages: [{ role: 'user', content: 'Say ok' }], maxTokens: 5, feature: 'admin_test' }); return { ok: true, message: info.label + ' answered using ' + x.model + '.' }; }
+    catch (e) { return { ok: false, message: e.message }; }
   });
   app.patch('/api/admin/provider', req => {
     A(req);
@@ -273,15 +290,26 @@ module.exports = function (app) {
   /* ---------- payment methods, orders, coupons ---------- */
   app.get('/api/admin/payments', req => {
     A(req);
-    return { methods: db.all('SELECT * FROM payment_methods ORDER BY sort, id').map(m => ({ ...payments.methodOut(m), config: db.json(m.config, {}), sort: m.sort })), gatevoo: require('../services/gatevoo').status(), demo: config.pay.demo, coupons: db.all('SELECT * FROM coupons ORDER BY created_at DESC').map(c => ({ ...c, active: !!c.active, first_purchase_only: !!c.first_purchase_only })) };
+    return { methods: db.all('SELECT * FROM payment_methods ORDER BY sort, id').map(m => ({ ...payments.methodOut(m), config: db.json(m.config, {}), sort: m.sort, warnings: payments.methodWarnings(m) })), icons: payments.ICONS, proof_modes: payments.PROOF_MODES, review: db.one("SELECT COUNT(*) n FROM orders WHERE status = 'review'").n, gatevoo: require('../services/gatevoo').status(), demo: config.pay.demo, coupons: db.all('SELECT * FROM coupons ORDER BY created_at DESC').map(c => ({ ...c, active: !!c.active, first_purchase_only: !!c.first_purchase_only })) };
   });
   const methodIn = (b, prev = {}) => {
     if (!String(b.name ?? prev.name ?? '').trim()) throw new HttpError(400, 'Give the payment method a name.');
-    if ((b.scope ?? prev.scope) === 'local' && b.countries !== undefined && !csvList(b.countries, true).filter(countries.valid).length) throw new HttpError(400, 'Pick at least one country for a local method.');
+    // A local method needs countries, or nobody would ever see it.
+    const willBeOn = b.active === undefined ? (prev.active ?? 1) : !!b.active;
+    if (willBeOn && (b.scope ?? prev.scope) === 'local' && !(b.countries !== undefined ? csvList(b.countries, true) : String(prev.countries || '').split(',')).filter(countries.valid).length) throw new HttpError(400, 'Pick at least one country for a local method (or make it global). Otherwise nobody sees it.');
     const provider = ['gatevoo', 'manual'].includes(b.provider) ? b.provider : prev.provider || 'manual';
     const cfg = { ...db.json(prev.config, {}) };
     if (b.coins !== undefined) cfg.coins = csvList(b.coins, true).filter(c => ['USDT_TRC20', 'BTC'].includes(c));
     if (b.instructions !== undefined) cfg.instructions = String(b.instructions).slice(0, 2000);
+    if (provider === 'manual') {
+      // Account details: an array of {label, value}, or "Label: value" lines from the admin form.
+      if (b.details !== undefined) cfg.details = (Array.isArray(b.details) ? b.details : String(b.details).split(/\r?\n/).map(l => { const i = l.indexOf(':'); return i > 0 ? { label: l.slice(0, i), value: l.slice(i + 1) } : { label: '', value: l }; }));
+      if (b.icon !== undefined) cfg.icon = b.icon;
+      if (b.currency !== undefined) { const cur = String(b.currency).trim().toUpperCase(); if (cur && !/^[A-Z0-9]{2,10}$/.test(cur)) throw new HttpError(400, 'Currency is a short code like USD, NGN, KES or USDT.'); cfg.currency = cur || 'USD'; }
+      if (b.rate !== undefined && b.rate !== '') { const r = Number(b.rate); if (!(r > 0) || r > 1e9) throw new HttpError(400, 'Rate is how many of that currency one US dollar buys, e.g. 1600 for NGN. Use 1 for USD.'); cfg.rate = r; }
+      if (b.proof_mode !== undefined) cfg.proof_mode = b.proof_mode;
+      Object.assign(cfg, payments.manualConfig(cfg));
+    }
     return {
       name: String(b.name ?? prev.name ?? '').trim().slice(0, 60) || 'Payment method', provider, scope: (b.scope ?? prev.scope) === 'local' ? 'local' : 'global',
       countries: b.countries !== undefined ? csvList(b.countries, true).filter(countries.valid).join(',') : prev.countries || '', description: String(b.description ?? prev.description ?? '').slice(0, 300),
@@ -292,6 +320,18 @@ module.exports = function (app) {
   app.patch('/api/admin/payments/methods/:id', req => { A(req); const m = db.one('SELECT * FROM payment_methods WHERE id = ?', Number(req.params.id)); if (!m) throw new HttpError(404, 'Not found'); db.update('payment_methods', m.id, methodIn(req.body || {}, m)); audit(req, 'method_update', m.name); return { ok: true }; });
   app.del('/api/admin/payments/methods/:id', req => { A(req); db.run('DELETE FROM payment_methods WHERE id = ?', Number(req.params.id)); audit(req, 'method_delete', req.params.id); return { ok: true }; });
   app.post('/api/admin/payments/gatevoo/ping', async req => { A(req); return require('../services/gatevoo').ping(); });
+  // Reorder: move a method one place up (-1) or down (+1); sort numbers are rewritten 10, 20, 30...
+  app.post('/api/admin/payments/methods/:id/move', req => {
+    A(req);
+    const list = db.all('SELECT id FROM payment_methods ORDER BY sort, id').map(r => r.id);
+    const i = list.indexOf(Number(req.params.id));
+    if (i < 0) throw new HttpError(404, 'Not found');
+    const j = i + (Number((req.body || {}).dir) < 0 ? -1 : 1);
+    if (j >= 0 && j < list.length) [list[i], list[j]] = [list[j], list[i]];
+    db.tx(() => list.forEach((id, k) => db.update('payment_methods', id, { sort: (k + 1) * 10 })));
+    audit(req, 'method_move', req.params.id);
+    return { ok: true, order: list };
+  });
 
   app.get('/api/admin/orders', req => {
     A(req);
@@ -303,9 +343,19 @@ module.exports = function (app) {
     const o = db.one('SELECT * FROM orders WHERE ref = ?', req.params.ref);
     if (!o) throw new HttpError(404, 'Order not found');
     if (o.status === 'paid') return { ok: true };
-    payments.fulfill(o.ref, { via: 'admin:' + req.user.email });
+    payments.approve(o.ref, { by: req.user.email, note: (req.body || {}).note });
     audit(req, 'order_mark_paid', o.ref);
     return { ok: true };
+  });
+  // Custom methods: approve (plan switches on at the locked price) or reject with a reason the customer sees.
+  app.post('/api/admin/orders/:ref/approve', req => { A(req); const r = payments.approve(req.params.ref, { by: req.user.email, note: (req.body || {}).note }); audit(req, 'order_approve', req.params.ref); return r; });
+  app.post('/api/admin/orders/:ref/reject', req => { A(req); const r = payments.reject(req.params.ref, { by: req.user.email, reason: (req.body || {}).reason }); audit(req, 'order_reject', req.params.ref + ': ' + String((req.body || {}).reason || '').slice(0, 120)); return r; });
+  // The customer's screenshot (private file, admins only).
+  app.get('/api/admin/orders/:ref/proof', (req, res) => {
+    A(req);
+    const f = payments.proofFile(db.one('SELECT * FROM orders WHERE ref = ?', req.params.ref));
+    if (!f) throw new HttpError(404, 'No screenshot');
+    res.send(require('node:fs').readFileSync(f), 200, { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' }[f.split('.').pop()], { 'Cache-Control': 'private, no-store', 'Content-Disposition': 'inline' });
   });
   // Money back to the customer (VooSquare logs it, affiliate commission stays) and disputes (commission reversed).
   app.post('/api/admin/orders/:ref/refund', req => {
@@ -377,7 +427,7 @@ module.exports = function (app) {
       if (bad) throw new HttpError(400, (String(bad.name || '').trim() || 'A new brand') + ' needs a name, a headline and a full link (https://…).');
       v = v.slice(0, 12).map(f => ({ key: String(f.key || f.name || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30), name: String(f.name || '').slice(0, 30), tag: String(f.tag || '').slice(0, 20), title: String(f.title || '').slice(0, 80), text: String(f.text || '').slice(0, 240), perk: String(f.perk || '').slice(0, 40), url: /^https?:\/\//.test(f.url || '') ? String(f.url).slice(0, 200) : '#', color: /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : '#1F5BFF', ink: /^#[0-9a-f]{6}$/i.test(f.ink) ? f.ink : '#FFFFFF', accent: /^#[0-9a-f]{6}$/i.test(f.accent || '') ? f.accent : '', on: f.on !== false })); }
     if (g === 'score') { const cur = settings.get('score'); v = Object.fromEntries(Object.keys(cur).map(k => [k, num((v || {})[k], cur[k], 0, 1000)])); }
-    if (g === 'billing') { const cur = settings.get('billing'); v = { renew_reminder_days: num((v || {}).renew_reminder_days, cur.renew_reminder_days, 0, 30), grace_days: num((v || {}).grace_days, cur.grace_days, 0, 30) }; }
+    if (g === 'billing') { const cur = settings.get('billing'); v = { renew_reminder_days: num((v || {}).renew_reminder_days, cur.renew_reminder_days, 0, 30), grace_days: num((v || {}).grace_days, cur.grace_days, 0, 30), pending_expire_days: Math.floor(num((v || {}).pending_expire_days, cur.pending_expire_days || 7, 1, 90)) }; }
     if (g === 'platforms') { v = Object.fromEntries(Object.entries(v || {}).filter(([, x]) => ['live', 'soon', 'off'].includes(x))); }
     if (g === 'offer' && v && v.code) { v.code = String(v.code).toUpperCase(); if (v.on && !db.one('SELECT code FROM coupons WHERE code = ?', v.code)) throw new HttpError(400, 'Create the coupon ' + v.code + ' first (Payments → Coupons), so the offer works at checkout.'); }
     if (typeof v !== 'object' || v === null) throw new HttpError(400, 'Expected an object');

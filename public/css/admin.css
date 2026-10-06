@@ -130,7 +130,7 @@ textarea.input { min-height: 96px; resize: vertical; line-height: 1.5; }
 .mail-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; }
 
 .code-box { font-family: var(--mono); font-size: 12.5px; background: var(--bg-2); border-radius: 12px; padding: 10px 12px; word-break: break-all; display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-.note { background: var(--blue-l); color: var(--ink-2); border-radius: 14px; padding: 12px 14px; font-weight: 600; font-size: 13.5px; }
+.note { background: var(--blue-l); color: var(--ink-2); border-radius: 14px; padding: 12px 14px; font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
 .note.warn { background: color-mix(in srgb, var(--orange) 14%, var(--card)); }
 .pager { display: flex; justify-content: center; margin-top: 14px; }
 .skel { height: 120px; border-radius: 20px; background: linear-gradient(90deg, var(--card) 0%, var(--card-2) 50%, var(--card) 100%); background-size: 200% 100%; animation: sk 1.2s linear infinite; }

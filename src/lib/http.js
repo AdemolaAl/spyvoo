@@ -64,10 +64,11 @@ function createApp() {
         throw new HttpError(404, 'Not found');
       } catch (e) {
         const status = e.status || 500;
-        if (status >= 500) console.error('[error]', req.method, req.url, e);
+        if (status >= 500) console.error('[error]', req.method, req.url, e.expose ? status + ' ' + e.message : e);
         if (res.writableEnded || res.headersSent) return;
         if (req.path.startsWith('/api/') || req.path.startsWith('/webhooks/') || req.path.startsWith('/w/')) {
-          res.json({ error: status >= 500 && config.isProd ? 'Something went wrong. Please try again.' : e.message, ...(e.extra || {}) }, status);
+          // Unexpected 5xx errors are hidden in production; an HttpError marked expose carries a message written for users.
+          res.json({ error: status >= 500 && config.isProd && !e.expose ? 'Something went wrong. Please try again.' : e.message, ...(e.extra || {}) }, status);
         } else if (app.errorPage) {
           app.errorPage(req, res, status, e);
         } else {
