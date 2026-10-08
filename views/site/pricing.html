@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Spyvoo pricing · Plans from $0</title>
-<meta name="description" content="Spyvoo plans: Free forever, Starter, Pro and Agency. Pay with USDT or Bitcoin. Cancel anytime.">
+<meta name="description" content="Spyvoo plans: Free forever, Starter, Pro and Agency. Pay with USDT or Bitcoin. Nothing auto-charges, and your first order has a 7-day refund.">
 <link rel="canonical" href="{{APP_URL}}/pricing">
 <meta property="og:image" content="{{APP_URL}}/img/og.png">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -14,11 +14,11 @@
 <body>
 <header class="pg-top"><a class="pg-brand" href="/"><span class="pg-mark"><svg viewBox="0 0 64 64"><rect x="26" y="27" width="12" height="7" rx="3" fill="#fff" opacity=".9"/><circle cx="20" cy="33" r="12" fill="#fff"/><circle cx="44" cy="33" r="12" fill="#fff"/><circle cx="21.5" cy="33" r="5.4" fill="#0A1638"/><circle cx="45.5" cy="33" r="5.4" fill="#0A1638"/></svg></span><span>Spy<b>voo</b></span></a><nav><a href="/#winners">Winning ads</a><a href="/#how">How it works</a><a href="/#features">Features</a></nav><span><a class="btn ghost" href="/login">Log in</a><a class="btn" href="/signup">Start free</a></span></header>
 <main class="pg-main wide">
-  <div class="pr-head"><span class="tag">Pricing</span><h1>Cheaper than one dead ad set.</h1><p class="muted" id="offerLine">Free forever plan. Upgrade when you’re ready. Pay with USDT or Bitcoin.</p>
+  <div class="pr-head"><span class="tag">Pricing</span><h1>Cheaper than one dead ad set.</h1><p class="muted" id="offerLine">Start free, no card. Upgrade when you’re ready. Pay with USDT or Bitcoin, and nothing charges you automatically.</p>
     <div class="pr-toggle"><button type="button" class="on" data-y="0">Monthly</button><button type="button" data-y="1">Yearly · 2 months free</button></div></div>
   <div class="pr-grid" id="grid"></div>
-  <div class="cmp-wrap"><table class="cmp-t" id="cmp"></table></div>
-  <div class="pg-card center" style="margin-top:40px"><h2 style="margin:0">Questions about plans?</h2><p>Write to <b>billing@spyvoo.com</b>. A real person answers.</p><a class="btn grad" href="/signup">Start free, no card</a></div>
+  <div class="cmp-box" id="cmpBox"><p class="cmp-hint" aria-hidden="true">Swipe to compare plans <span>→</span></p><div class="cmp-wrap" id="cmpWrap"><table class="cmp-t" id="cmp"></table></div></div>
+  <div class="pg-card center" style="margin-top:40px"><h2 style="margin:0">Good to know</h2><p><b>Not sure which plan?</b> Start on Free. Starter suits solo buyers running a few offers, Pro suits full-time buyers launching every week, and Agency gives a team of 3 shared boards and limits.</p><p><b>No auto-charges.</b> Crypto can’t pull money from you. We email you before your plan ends; if you don’t renew, you move to Free and keep your boards and saved ads.</p><p><b>7-day refund on your first order</b> if Spyvoo isn’t for you (see the <a href="/legal/refunds">refund policy</a>).</p><p><b>New to crypto?</b> Checkout shows the exact amount and address. Your plan switches on by itself once the payment confirms.</p><p>Questions? Write to <b>billing@spyvoo.com</b>. A real person answers.</p><a class="btn grad" href="/signup">Start free, no card</a></div>
 </main>
 <footer class="pg-foot">© Zedapex Limited · <a href="{{VOO_APP_URL}}" target="_blank" rel="noopener">Part of VooSquare</a> · <a href="/legal/terms">Terms</a> · <a href="/legal/privacy">Privacy</a> · <a href="/legal/refunds">Refunds</a></footer>
 <script>
@@ -40,11 +40,15 @@
       '<tr><td>Ads saved forever</td>' + plans.map(function () { return '<td class="y">✓</td>'; }).join('') + '</tr>' +
       '<tr><td>Price ' + (yearly ? '(per month, billed yearly)' : '(per month)') + '</td>' + plans.map(function (p) { return '<td><b>$' + (yearly ? Math.round(p.price_year / 12) : p.price_month) + '</b></td>'; }).join('') + '</tr></tbody>';
   }
+  // Phone: the table scrolls sideways under a sticky first column; the fade + hint go once you reach the end.
+  var cw = document.getElementById('cmpWrap'), cb = document.getElementById('cmpBox');
+  function edge() { var more = cw.scrollWidth - cw.clientWidth - cw.scrollLeft > 4; cb.classList.toggle('more', more); cb.classList.toggle('moved', cw.scrollLeft > 4); }
+  cw.addEventListener('scroll', edge, { passive: true }); addEventListener('resize', edge);
   fetch('/api/public/plans-full').then(function (r) { return r.json(); }).then(function (d) {
-    data = d; draw();
+    data = d; draw(); edge();
     if (d.offer) document.getElementById('offerLine').innerHTML = '<b style="color:#FF3D8B">' + esc(d.offer.title) + ':</b> ' + esc(d.offer.text) + ' Code <b>' + esc(d.offer.code) + '</b>.';
   });
-  document.querySelectorAll('[data-y]').forEach(function (b) { b.onclick = function () { yearly = b.dataset.y === '1'; document.querySelectorAll('[data-y]').forEach(function (x) { x.classList.toggle('on', x === b); }); if (data) draw(); }; });
+  document.querySelectorAll('[data-y]').forEach(function (b) { b.onclick = function () { yearly = b.dataset.y === '1'; document.querySelectorAll('[data-y]').forEach(function (x) { x.classList.toggle('on', x === b); }); if (data) { draw(); edge(); } }; });
 })();
 </script>
 </body>

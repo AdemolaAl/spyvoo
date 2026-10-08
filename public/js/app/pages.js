@@ -21,14 +21,15 @@
     var hi = hr < 5 ? 'Up late' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
     view.innerHTML = '<div class="stagger">' +
       '<section class="hero"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><div>' +
-      '<span class="eyebrow" style="color:rgba(255,255,255,.75)">Agent HQ · ' + new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) + '</span>' +
+      '<span class="eyebrow" style="color:rgba(255,255,255,.75)">Today · ' + new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) + '</span>' +
       '<h1 style="margin-top:12px">' + hi + ', ' + esc((u.name || 'agent').split(' ')[0]) + '.<br><span class="hl"><span class="tnum" id="liveN">' + SV.n(b.stats.active) + '</span> winners</span> are running right now.</h1>' +
       '<p>Search like you talk, open a winner, and let the AI tell you why it works. Your next angle is in here somewhere.</p>' +
+      '<form class="home-search" id="homeSearch" role="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="homeQ" placeholder="Try: crypto ads in Brazil" autocomplete="off" aria-label="Search ads"><button type="submit">Spy</button></form>' +
       '<div class="quick">' + ['Crypto in Brazil, 30+ days', 'Skincare winners in Mexico', 'Fintech video ads in Egypt', 'Sign-up ads running 60+ days'].map(function (t) { return '<button type="button" data-q="' + esc(t) + '">' + esc(t) + '</button>'; }).join('') + '</div>' +
       '<button class="tour-card" type="button" data-tour><span class="thumb"><span class="mini"><i></i><u><s></s><s></s><s></s><s></s><s></s><s></s></u></span><span class="play">' + I('play') + '</span></span><span><b>Watch how Spyvoo works</b><span>60 seconds · it plays right here, on your dashboard</span></span></button>' +
       '</div><div class="hero-art" id="heroArt"><div class="agent-wrap">' + SV.agent(SV.cast.host, { pose: 'bino' }) + '</div></div></section>' +
-      '<div id="checklist"></div><div id="offerBox"></div>' +
       '<section class="sec">' + secHead('Today’s top winners', 'trophy', 'var(--pink)', { href: '/app/discover?sort=score&status=active', label: 'See all' }) + '<div class="strip" id="winners">' + SV.skelCards(5) + '</div></section>' +
+      '<div id="checklist"></div><div id="offerBox"></div>' +
       '<section class="sec">' + secHead('Trending niches', 'trend', 'var(--violet)') + '<div class="niches" id="niches"></div></section>' +
       '<section class="sec">' + secHead('More from Zedapex', 'spark', 'var(--orange)') + '<div id="family"></div></section>' +
       '<section class="sec">' + secHead('Longest runners', 'clock', 'var(--blue)', { href: '/app/discover?sort=days&status=active', label: 'See all' }) + '<div class="strip" id="longest">' + SV.skelCards(5) + '</div></section>' +
@@ -38,15 +39,18 @@
     var art = $('#heroArt');
     SV.$$('[data-q]', view).forEach(function (x) { x.onclick = function () { SV.go('/app/discover?ask=' + encodeURIComponent(x.dataset.q)); }; });
     view.querySelector('[data-tour]').onclick = function () { SV.tour.start(); };
+    $('#homeSearch').onsubmit = function (e) { e.preventDefault(); var v = $('#homeQ').value.trim(); SV.go('/app/discover' + (v ? '?ask=' + encodeURIComponent(v) : '')); };
     SV.family($('#family'), b.family);
     checklist();
     offerBox($('#offerBox'));
 
     SV.get('/api/app/home').then(function (d) {
+      if (!document.getElementById('winners') || !document.getElementById('heroArt')) return; // left Home before it loaded
       $('#winners').innerHTML = d.winners.length ? d.winners.map(function (a) { return SV.adCard(a); }).join('') : '<div class="mut">No ads yet. The first scrape fills this in.</div>';
       $('#longest').innerHTML = d.longest.map(function (a) { return SV.adCard(a); }).join('');
       // floating ad cards in the hero
-      var top = d.winners.slice(0, 2);
+      var top = [], seenAdv = {}, seenImg = {};
+      d.winners.concat(d.longest || []).forEach(function (a) { if (top.length < 2 && a.thumb && !seenAdv[a.advertiser.name] && !seenImg[a.thumb]) { seenAdv[a.advertiser.name] = 1; seenImg[a.thumb] = 1; top.push(a); } });
       top.forEach(function (a, i) {
         var c = document.createElement('a'); c.href = '#'; c.className = 'float-card fc' + (i + 1);
         c.innerHTML = '<img src="' + esc(a.thumb) + '" alt=""><b>' + esc(a.advertiser.name.split(' ')[0]) + '<span>' + a.days + 'd</span></b>';

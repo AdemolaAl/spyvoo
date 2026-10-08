@@ -21,6 +21,7 @@ zero npm dependencies** and a SQLite file. It deploys to Railway in about 30 min
 | Pipeline | `src/services/ingest.js`, `src/providers/*` | Runs tracking rules on a schedule within a daily budget, saves and de-duplicates ads, downloads media, refreshes scores |
 | Emails | `emails/*.html` | 14 branded emails (welcome, verify, reset, receipt, payment not approved, renewal, expired, advertiser alert, search alert, weekly report, team invite, offer, announcement, admin budget) with the Voo family strip |
 | Payments | `src/services/payments.js`, `gatevoo.js` | Gatevoo crypto checkout (USDT TRC20, Bitcoin), custom methods per country (bank transfer, mobile money, wallet: proof upload and admin review), coupons, renewals, refunds and chargebacks |
+| Support agent | `src/services/support.js`, `content/support/knowledge.md`, `public/js/support-chat.js`, Admin → Support | 24/7 support agent ("Leo") in the dashboard and on the website: greets by name, replies in short human-style messages, knows Spyvoo and the customer's account and payments, re-checks crypto payments and switches plans on, hands chats to a person. See [docs/SUPPORT.md](docs/SUPPORT.md) |
 | VooSquare | `src/services/voosquare.js`, `voo-connect/` | Continue with Voo ID (email login kept), affiliate hand-off, money and activity events, summary card, support widget |
 
 ## Run it locally (2 minutes)
@@ -35,7 +36,7 @@ The first boot creates the database, the four plans, the SPYLAUNCH coupon, five 
 and 27 sample ads so nothing is empty. Payments run in test mode locally (`PAYMENTS_DEMO` is on outside production).
 
 ```bash
-npm test          # about 120 tests, about 20 seconds (the VooSquare end-to-end test needs the voosquare-app checkout)
+npm test          # about 135 tests, about 20 seconds (the VooSquare end-to-end test needs the voosquare-app checkout)
 npm run check     # launch readiness: what's connected, what's missing
 npm run backup    # copy the database to data/backups/
 npm run create-admin -- you@example.com "a-long-password"
@@ -80,6 +81,7 @@ breakdowns per plan) work the same with every provider.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the code fits together, and why it is not Next.js
 - [docs/API.md](docs/API.md): every endpoint
 - [docs/EMAILS.md](docs/EMAILS.md): the email list, sender addresses and DNS
-- [docs/GATEVOO.md](docs/GATEVOO.md): crypto checkout contract
+- [docs/GATEVOO.md](docs/GATEVOO.md): crypto checkout contract (rewritten Oct 2026 to the real Gatevoo API)
+- [docs/SUPPORT.md](docs/SUPPORT.md): the 24/7 support agent: what it knows, what it can do, hand-off, settings, cost
 - [docs/PAYMENTS_CHECKLIST.md](docs/PAYMENTS_CHECKLIST.md): make live payments work, read checkout errors, test the connection
 - [docs/VOOSQUARE.md](docs/VOOSQUARE.md): Voo ID login, affiliate hand-off, events and the summary card (Voo Connect kit in `voo-connect/`)

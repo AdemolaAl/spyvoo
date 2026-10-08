@@ -6,7 +6,8 @@ const { HttpError } = require('../lib/http');
 module.exports = function (app) {
   // Gatevoo: "X-Gatevoo-Signature: t=<unix>,v1=<hmac>" or plain hex HMAC of the body (Voo family contract).
   // We never trust the body alone: the invoice is re-read from the API.
-  app.post('/webhooks/gatevoo', (req, res) => {
+  // Also answers at /webhooks/gatevoo/gatevoo (the address Joinvoo uses), so a copied URL still works.
+  const handler = (req, res) => {
     const gatevoo = require('../services/gatevoo');
     if (!gatevoo.signatureOk(req.rawBody || Buffer.from(''), req.headers['x-gatevoo-signature'], undefined, req.headers['x-gatevoo-timestamp'])) {
       console.error('[gatevoo] webhook refused: ' + (require('../config').gatevoo.webhookSecret ? 'signature does not match GATEVOO_WEBHOOK_SECRET' : 'GATEVOO_WEBHOOK_SECRET missing'));
@@ -17,5 +18,7 @@ module.exports = function (app) {
     const ref = inv.reference || inv.order_id;
     const o = ref ? db.one("SELECT * FROM orders WHERE ref = ? AND provider = 'gatevoo'", String(ref)) : null;
     if (o) gatevoo.verify(o).catch(e => console.error('[gatevoo]', e.message));
-  });
+  };
+  app.post('/webhooks/gatevoo', handler);
+  app.post('/webhooks/gatevoo/gatevoo', handler);
 };

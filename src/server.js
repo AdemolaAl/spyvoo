@@ -41,6 +41,7 @@ function build({ dbFile, scheduler = config.scheduler } = {}) {
   require('./routes/app')(app);
   require('./routes/admin')(app);
   require('./routes/public')(app);
+  require('./routes/support')(app);
   require('./routes/webhooks')(app);
   require('./routes/pages')(app);
 
@@ -48,7 +49,11 @@ function build({ dbFile, scheduler = config.scheduler } = {}) {
 
   // Jobs that were running when the last process stopped will never finish: close them.
   db.run("UPDATE jobs SET status = 'failed', error = 'Interrupted by a restart', finished_at = ? WHERE status = 'running'", db.now());
-  if (scheduler) { require('./services/scheduler').start(); voo.start(); }
+  if (scheduler) {
+    require('./services/scheduler').start(); voo.start();
+    // Crypto orders paid while Spyvoo and Gatevoo disagreed (or whose webhook never arrived) switch on by themselves.
+    setTimeout(() => require('./services/gatevoo').recheckAll().then(r => { if (r.checked) console.log('[gatevoo] re-checked ' + r.checked + ' unpaid crypto orders, ' + r.activated + ' activated'); }).catch(e => console.error('[gatevoo] recheck', e.message)), 15000).unref();
+  }
   return app;
 }
 

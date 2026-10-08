@@ -92,7 +92,12 @@ test('login start: state cookie, prompt=signup, ref/vclick hand-off, return_to k
   const land = await c.get('/?ref=amaref1&vclick=Click00001&sub1=x');
   assert.ok(c.jar.get('voo_attr'), 'landing keeps the click');
   assert.ok(land.text.includes('<script src="/voo-connect-browser.js" defer></script>'));
-  assert.ok(land.text.includes(hubUrl + '/widget.js" data-product="spyvoo"'));
+  // Spyvoo's own support agent owns the chat corner while it is on; the VooSquare widget shows when it is off.
+  assert.ok(land.text.includes('/js/support-chat.js') && !land.text.includes('/widget.js'), 'one chat bubble: Spyvoo support');
+  require('../src/services/settings').set('support', { on: false });
+  const land2 = await c.get('/?ref=amaref1&vclick=Click00001&sub1=x');
+  require('../src/services/settings').set('support', { on: true });
+  assert.ok(land2.text.includes(hubUrl + '/widget.js" data-product="spyvoo"'));
   assert.ok(land.headers.get('content-security-policy').includes(hubUrl), 'CSP lets the widget load and call VooSquare');
   const s = await c.get('/signup?next=/app/plan');
   assert.equal(s.location, '/auth/voosquare?signup=1&return_to=%2Fapp%2Fplan');
@@ -294,7 +299,10 @@ test('dashboard: widget with the member’s email and name; "Part of VooSquare";
   on();
   const c = h.client();
   await vooLogin(c, { voo_id: 'vs_widget', email: 'wid@example.com', name: 'Wid "Quote" <b>' });
+  assert.ok((await c.get('/app')).text.includes('/js/support-chat.js'), 'Spyvoo support chat in the dashboard');
+  require('../src/services/settings').set('support', { on: false });
   const app = await c.get('/app');
+  require('../src/services/settings').set('support', { on: true });
   assert.ok(app.text.includes('data-email="wid@example.com" data-name="Wid &quot;Quote&quot; &lt;b&gt;"'), 'escaped data-name');
   const boot = (await c.get('/api/app/bootstrap')).body;
   assert.equal(boot.voosquare.app_url, hubUrl + '/app');

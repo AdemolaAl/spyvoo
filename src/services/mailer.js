@@ -49,21 +49,40 @@ function familyHtml() {
 
 function baseData() {
   const c = settings.get('company');
-  return { app_url: config.appUrl, logo_url: /^https?:/.test(c.logo_url) ? c.logo_url : config.appUrl + c.logo_url, company_name: c.legal_name, company_city: c.city, support_email: c.support_email, year: new Date().getFullYear(), family_html: familyHtml() };
+  return { app_url: config.appUrl, logo_url: /^https?:/.test(c.logo_url) ? c.logo_url : config.appUrl + c.logo_url, company_name: c.legal_name, company_city: c.city, support_email: c.support_email, agent_name: (settings.get('support') || {}).agent_name || 'Leo', year: new Date().getFullYear(), family_html: familyHtml() };
 }
 
 function build(name, data = {}) {
   const t = load(name);
   const all = { ...baseData(), ...data };
   const content = tpl.render(t.body, all);
-  const subject = tpl.render(t.subject, all).replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+  const subject = decode(tpl.render(t.subject, all)).replace(/\s+/g, ' ').trim();
   const preheader = tpl.render(t.preheader, all);
   const base = load('base');
   const html = tpl.render(base.body, { ...all, content, preheader });
-  const text = html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
-    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|tr|h\d|div|table)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
-    .replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim();
-  return { subject, html, text };
+  return { subject, html, text: toText(html) };
+}
+
+// Plain-text part: readable on its own (multipart/alternative), no raw entities, cells and labels kept apart.
+const ENT = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", rarr: '→', larr: '←', middot: '·', copy: '©', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', mdash: '—', ndash: '–', hellip: '…', zwnj: '', zwj: '', shy: '' };
+function decode(s) {
+  return String(s).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1)); return n === 8202 || n === 8203 || n === 8204 ? '' : String.fromCodePoint(n); }
+    return Object.prototype.hasOwnProperty.call(ENT, e.toLowerCase()) ? ENT[e.toLowerCase()] : m;
+  });
+}
+function toText(html) {
+  return decode(html.replace(/<head[\s\S]*?<\/head>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<div class="sv-preheader"[\s\S]*?<\/div>/i, '')
+    .replace(/<span\b[^>]*display:\s*(block|inline-block)[^>]*>/gi, '\n')
+    .replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, inner) => {
+      const label = inner.replace(/<[^>]+>/g, '').replace(/[ \t]*\n\s*/g, '\n').replace(/[ \t]+/g, ' ').trim();
+      const url = href.replace(/^mailto:/i, '');
+      return !label ? '' : label === url || label === href ? label : label + ' (' + url + ')';
+    })
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<(p|h\d|tr|table|div)\b[^>]*>/gi, '\n').replace(/<\/(p|tr|h\d|div|table)>/gi, '\n')
+    .replace(/<\/td>[ \t]*(<td\b[^>]*sv-stack)/gi, '\n\n$1').replace(/<\/td>[ \t]*<td\b/gi, ': <td').replace(/<[^>]+>/g, ''))
+    .replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function parseFrom(from) {
@@ -73,6 +92,12 @@ function parseFrom(from) {
 
 async function deliver(to, msg, opts = {}) {
   const replyTo = opts.replyTo || config.mail.replyTo;
+  // Bulk mail (alerts, weekly report, offers, news) carries List-Unsubscribe so Gmail/Yahoo show their
+  // "Unsubscribe" link instead of users pressing "Report spam".
+  // One-click unsubscribe (Gmail/Yahoo bulk-sender rules): a signed link that switches off marketing mail for this address.
+  const marketing = opts.bulk && MARKETING.has(opts.template || '');
+  const unsub = marketing ? unsubscribeUrl(to) : '';
+  const headers = marketing ? { 'List-Unsubscribe': '<' + unsub + '>, <mailto:' + (settings.get('company').support_email || replyTo) + '?subject=Unsubscribe>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : null;
   const p = config.mail.provider;
   const key = config.mail.key;
   if (p === 'log' || !key) {
@@ -86,14 +111,14 @@ async function deliver(to, msg, opts = {}) {
   let res;
   if (p === 'resend') {
     res = await fetch('https://api.resend.com/emails', { method: 'POST', signal: AbortSignal.timeout(15000), headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: config.mail.from, to: [to], subject: msg.subject, html: msg.html, text: msg.text, reply_to: replyTo || undefined }) });
+      body: JSON.stringify({ from: config.mail.from, to: [to], subject: msg.subject, html: msg.html, text: msg.text, reply_to: replyTo || undefined, headers: headers || undefined }) });
   } else if (p === 'brevo') {
     const f = parseFrom(config.mail.from);
     res = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', signal: AbortSignal.timeout(15000), headers: { 'api-key': key, 'Content-Type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ sender: f, to: [{ email: to }], subject: msg.subject, htmlContent: msg.html, textContent: msg.text, replyTo: replyTo ? { email: replyTo } : undefined }) });
+      body: JSON.stringify({ sender: f, to: [{ email: to }], subject: msg.subject, htmlContent: msg.html, textContent: msg.text, replyTo: replyTo ? { email: replyTo } : undefined, headers: headers || undefined }) });
   } else if (p === 'postmark') {
     res = await fetch('https://api.postmarkapp.com/email', { method: 'POST', signal: AbortSignal.timeout(15000), headers: { 'X-Postmark-Server-Token': key, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ From: config.mail.from, To: to, Subject: msg.subject, HtmlBody: msg.html, TextBody: msg.text, ReplyTo: replyTo || undefined, MessageStream: 'outbound' }) });
+      body: JSON.stringify({ From: config.mail.from, To: to, Subject: msg.subject, HtmlBody: msg.html, TextBody: msg.text, ReplyTo: replyTo || undefined, MessageStream: opts.bulk ? (process.env.POSTMARK_BROADCAST_STREAM || 'outbound') : 'outbound', Headers: headers ? Object.entries(headers).map(([Name, Value]) => ({ Name, Value })) : undefined }) });
   } else throw new Error('Unknown MAIL_PROVIDER ' + p);
   if (!res.ok) { const e = new Error('Email provider ' + p + ' returned ' + res.status + ': ' + (await res.text()).slice(0, 300)); e.retry = res.status === 429 || res.status >= 500; throw e; }
   return 'sent';
@@ -123,10 +148,20 @@ function pump() {
 function send(to, name, data = {}, opts = {}) {
   let msg;
   try { msg = build(name, data); } catch (e) { console.error('[mail] build failed', name, e.message); return Promise.resolve(false); }
-  return new Promise(done => { (opts.bulk ? queue.bulk : queue.now).push({ to, name, msg, opts, tries: 0, done }); pump(); });
+  return new Promise(done => { (opts.bulk ? queue.bulk : queue.now).push({ to, name, msg, opts: { ...opts, template: name }, tries: 0, done }); pump(); });
 }
 function pending() { return queue.now.length + queue.bulk.length; }
 
+// Marketing mail only: the one-click link switches these off (alerts are turned off on the follow / saved search).
+const MARKETING = new Set(['weekly-report', 'offer', 'announcement']);
+function unsubscribeToken(email) { const e = String(email || '').toLowerCase(); return Buffer.from(e).toString('base64url') + '.' + require('../lib/security').hmac('unsub:' + e).slice(0, 32); }
+function unsubscribeUrl(email) { return config.appUrl + '/unsubscribe/' + unsubscribeToken(email); }
+function readUnsubscribe(tok) {
+  const m = /^([A-Za-z0-9_-]{4,400})\.([0-9a-f]{32})$/.exec(String(tok || ''));
+  if (!m) return null;
+  let email; try { email = Buffer.from(m[1], 'base64url').toString('utf8'); } catch { return null; }
+  return require('../lib/security').safeEqual(unsubscribeToken(email).split('.')[1], m[2]) ? email : null;
+}
 const U = config.appUrl;
 const SAMPLE = {
   name: 'Maya', dashboard_url: U + '/app', verify_url: U + '/verify?token=sample', reset_url: U + '/reset?token=sample', code: '482913',
@@ -140,4 +175,4 @@ const SAMPLE = {
   reason: 'We couldn’t find a transfer with this reference. Please check the reference and try again.'
 };
 
-module.exports = { pending, send, build, list, SAMPLE };
+module.exports = { pending, send, build, list, SAMPLE, unsubscribeUrl, readUnsubscribe };

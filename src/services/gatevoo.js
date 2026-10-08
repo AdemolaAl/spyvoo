@@ -96,20 +96,24 @@ async function createInvoice(order, user, coin) {
   if (mode() === 'sandbox') return { id: 'gv_sbx_' + order.ref, checkout_url: '/pay/gatevoo/' + encodeURIComponent(order.ref) + (preferred ? '?coin=' + preferred : ''), expires_at: new Date(Date.now() + 3600e3).toISOString() };
   // Both Gatevoo contracts are sent: Spyvoo's (reference, amount{}, coins) and the Voo family one in VooSquare's
   // docs/GATEVOO.md (order_id, amount_usd, assets, customer_email). Gatevoo ignores the fields it does not know.
+  const back = config.appUrl + '/pay/callback?ref=' + encodeURIComponent(order.ref);
   const inv = await api('POST', '/invoices', {
     reference: order.ref, order_id: order.ref,
     amount: { value: order.amount_usd.toFixed(2), currency: 'USD' }, amount_usd: Number(order.amount_usd.toFixed(2)),
     coins: list, assets: list, preferred_coin: preferred,
     description: 'Spyvoo · ' + order.item_name,
-    customer: { email: user.email, name: user.name || '' }, customer_email: user.email,
-    success_url: config.appUrl + '/pay/callback?ref=' + encodeURIComponent(order.ref),
+    customer: { email: user.email, name: user.name || '' }, customer_email: user.email, customer_name: user.name || undefined,
+    // Gatevoo sends the customer to redirect_url once paid; success_url is the same link for the older contract.
+    redirect_url: back, success_url: back,
     cancel_url: config.appUrl + '/app/plan?cancelled=' + encodeURIComponent(order.ref),
     webhook_url: webhookUrl(),
-    expires_in: 3600,
+    expires_in: 3600, expires_in_min: 60,
     metadata: { app: 'spyvoo', user_id: order.user_id, plan: order.plan_id, interval: order.interval }
   }, 'spyvoo-' + order.ref);
   const url = inv && (inv.checkout_url || inv.url);
-  if (!inv || !inv.id || !/^https:\/\//.test(String(url || ''))) {
+  // https only in production; a local Gatevoo (http://localhost) is fine while developing and testing.
+  const okUrl = config.isProd ? /^https:\/\//.test(String(url || '')) : /^https?:\/\//.test(String(url || ''));
+  if (!inv || !inv.id || !okUrl) {
     const e = new Error('Gatevoo answered POST ' + cfg().apiUrl + '/invoices without an invoice id and an https checkout_url: ' + JSON.stringify(inv || null).slice(0, 200));
     e.badResponse = true; throw e;
   }
@@ -150,25 +154,35 @@ function settle(inv, via = 'gatevoo') {
   const o = db.one('SELECT * FROM orders WHERE ref = ? AND provider = \'gatevoo\'', ref);
   if (!o) return { ok: false, reason: 'Order not found' };
   if (o.provider_ref && inv.id && String(inv.id) !== o.provider_ref) return { ok: false, reason: 'Invoice does not match this order' };
-  const pay = inv.payment || {};
-  const paidUsd = Number(inv.paid_usd != null ? inv.paid_usd : inv.paid_amount != null ? inv.paid_amount : pay.amount_usd);
-  const coin = String(pay.coin || inv.coin || inv.asset || '');
+  const pay = inv.payment && typeof inv.payment === 'object' ? inv.payment : {};
+  const status = String(inv.status || '').toLowerCase();
+  // USD credited. Gatevoo only calls an invoice "paid" after matching the full amount on-chain, so when it gives no
+  // separate paid_usd, the invoice's own amount_usd is what was received.
+  // An older Gatevoo without paid_usd: a USDT amount received is already in dollars; otherwise the invoice amount.
+  const usdtReceived = !inv.paid_usd && inv.method === 'USDT_TRC20' && inv.received != null && isFinite(Number(inv.received)) ? Math.min(Number(inv.amount_usd) || Infinity, Number(inv.received)) : null;
+  const pick = [inv.paid_usd, inv.paid_amount, pay.amount_usd, usdtReceived, PAID.includes(status) ? inv.amount_usd : null].find(v => v != null && v !== '' && isFinite(Number(v)));
+  const paidUsd = pick != null ? Number(pick) : NaN;
+  const coin = String(pay.coin || inv.coin || inv.asset || inv.method || '');
   const info = {
-    coin: COINS[coin] ? coin : (coin || null), tx_hash: pay.tx_hash || inv.tx_hash || null,
-    paid_usd: isFinite(paidUsd) ? paidUsd : null, paid_amount: pay.amount != null ? String(pay.amount) : null,
-    confirmations: pay.confirmations != null ? Number(pay.confirmations) : null, gv_status: String(inv.status || ''),
+    coin: COINS[coin] ? coin : (coin || null), tx_hash: pay.tx_hash || inv.tx_hash || inv.txid || null,
+    paid_usd: isFinite(paidUsd) ? paidUsd : null, paid_amount: pay.amount != null ? String(pay.amount) : inv.received != null ? String(inv.received) : null,
+    confirmations: pay.confirmations != null ? Number(pay.confirmations) : inv.confirmations != null ? Number(inv.confirmations) : null, gv_status: String(inv.status || ''),
     // The paying wallet, when Gatevoo tells us: only ever sent to VooSquare as our own hash (fraud hint).
     payer: typeof (pay.from || pay.from_address || pay.sender) === 'string' ? String(pay.from || pay.from_address || pay.sender).slice(0, 120) : null
   };
   const meta = { ...db.json(o.meta, {}), ...Object.fromEntries(Object.entries(info).filter(([, v]) => v != null && v !== '')) };
+  if (inv.duplicate_of) meta.gv_duplicate_of = String(inv.duplicate_of).slice(0, 60);
   if (o.status === 'paid') return { ok: true, order: o };
-  const status = String(inv.status || '').toLowerCase();
+  // Refunded or charged-back orders are a person's decision: a late webhook never switches them back on.
+  if (['refunded', 'charged_back', 'rejected'].includes(o.status)) return { ok: false, reason: 'Order is ' + o.status };
   if (PAID.includes(status)) {
     if (!(info.paid_usd >= o.amount_usd - TOLERANCE_USD)) {
       meta.underpaid = true;
       db.update('orders', o.id, { meta: JSON.stringify(meta) });
       return { ok: false, reason: 'Underpaid: received $' + (info.paid_usd || 0).toFixed(2) + ' of $' + o.amount_usd.toFixed(2) };
     }
+    // Paid in full: an "underpaid" flag from an earlier check (or from the old contract bug) no longer applies.
+    delete meta.underpaid;
     db.update('orders', o.id, { meta: JSON.stringify(meta) });
     require('./payments').fulfill(ref, { via, provider_ref: o.provider_ref || String(inv.id || '') });
     return { ok: true };
@@ -182,9 +196,25 @@ function settle(inv, via = 'gatevoo') {
   return { ok: false, reason: status === 'confirming' ? 'Payment seen, waiting for confirmations' : 'Waiting for payment' };
 }
 
+// (Called through module.exports so tests can stand in for Gatevoo.)
 async function verify(o) {
-  if (!o.provider_ref || mode() !== 'live') return { ok: false, reason: 'Waiting for payment' };
-  return settle(await getInvoice(o.provider_ref));
+  if (!o.provider_ref || module.exports.mode() !== 'live') return { ok: false, reason: 'Waiting for payment' };
+  return settle(await module.exports.getInvoice(o.provider_ref));
+}
+
+// Ask Gatevoo again about every recent unpaid crypto order. Heals orders whose payment arrived while the two apps
+// disagreed on the contract (paid customers left on Free), and any webhook that never got through. Safe to repeat.
+async function recheckAll({ days = 45, limit = 500 } = {}) {
+  if (module.exports.mode() !== 'live') return { checked: 0, activated: 0, skipped: 'not live' };
+  const since = new Date(Date.now() - days * 864e5).toISOString();
+  const rows = db.all("SELECT * FROM orders WHERE provider = 'gatevoo' AND provider_ref != '' AND status IN ('pending', 'failed', 'expired') AND created_at >= ? ORDER BY id DESC LIMIT ?", since, limit);
+  let activated = 0, errors = 0;
+  for (const o of rows) {
+    try { await module.exports.verify(o); if (db.one('SELECT status FROM orders WHERE id = ?', o.id).status === 'paid') activated++; }
+    catch (e) { errors++; if (errors >= 5) break; }
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return { checked: rows.length, activated, errors };
 }
 
 // Sandbox only: pretend Gatevoo saw the coins land.
@@ -201,9 +231,21 @@ async function ping() {
   if (mode() === 'sandbox') return { ok: true, mode: 'sandbox', ...base, message: 'Sandbox mode (PAYMENTS_DEMO is on, no keys): no real coins move. Add GATEVOO_API_KEY and GATEVOO_WEBHOOK_SECRET to take real payments.' };
   if (mode() === 'off') return { ok: false, mode: 'off', code: 'not_configured', ...base, message: missing().join(' and ') + ' on the server, so crypto checkout is hidden from customers.' };
   try {
-    const me = await api('GET', '/me');
+    let me;
+    try { me = await api('GET', '/me'); }
+    catch (e) {
+      if (e.status !== 404) throw e;
+      // Older Gatevoo without /me: ask for an invoice that cannot exist. "Invoice not found" (404) proves the key works;
+      // a bad key answers 401 before that.
+      try { await api('GET', '/invoices/inv_0000000000000000'); }
+      catch (e2) { if (e2.status !== 404 || !/invoice/i.test(String(e2.providerMessage || ''))) throw e2; }
+      me = {};
+    }
+    const warn = [];
+    if (me.app && me.app.webhook_url_set === false) warn.push('Gatevoo has no webhook URL for this app: in Gatevoo → Connect → Spyvoo, set it to ' + webhookUrl() + ' (without it, a plan only switches on when the customer comes back to Spyvoo).');
+    if (Array.isArray(me.methods)) { const off = coins().filter(c => !me.methods.includes(c)); if (off.length) warn.push('Spyvoo offers ' + off.map(c => COINS[c].label).join(' and ') + ' but Gatevoo has no wallet for it, so customers won’t see it there. Add the wallet in Gatevoo or switch the coin off here.'); }
     const name = me && (me.name || (me.merchant && me.merchant.name));
-    return { ok: true, mode: 'live', ...base, message: 'Connected to ' + cfg().apiUrl + (name ? ' as ' + name : '') + '. API key accepted.' };
+    return { ok: true, mode: 'live', ...base, message: 'Connected to ' + cfg().apiUrl + (name ? ' as ' + name : '') + '. API key accepted.' + (warn.length ? ' Heads-up: ' + warn.join(' ') : ''), warnings: warn };
   } catch (e) {
     const x = explain(e);
     return { ok: false, mode: 'live', code: x.code, ...base, message: x.reason };
@@ -216,4 +258,4 @@ function status() {
 
 function txUrl(coin, hash) { return hash && COINS[coin] && !/^sandbox_/.test(hash) ? COINS[coin].explorer + encodeURIComponent(hash) : null; }
 
-module.exports = { COINS, USER_MSG, mode, available, coins, explain, lastError, createInvoice, getInvoice, settle, verify, signatureOk, sign, sandboxPay, ping, status, txUrl, webhookUrl };
+module.exports = { COINS, USER_MSG, mode, available, coins, explain, lastError, createInvoice, getInvoice, settle, verify, recheckAll, signatureOk, sign, sandboxPay, ping, status, txUrl, webhookUrl };

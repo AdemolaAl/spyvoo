@@ -1,5 +1,14 @@
 # Payments checklist (for the developer)
 
+> **October 2026 fix: paid crypto orders not switching on.** Spyvoo and Gatevoo used different field names, so every
+> paid order looked "underpaid", "Test payment connection" said 404, and customers weren't sent back after paying.
+> Both apps now speak the same contract (details in [GATEVOO.md](GATEVOO.md)). After deploying:
+> 1. In Gatevoo → Connect → Spyvoo, check the webhook URL is `https://spyvoo.com/webhooks/gatevoo` and press **Send test webhook** (must say delivered).
+> 2. Spyvoo re-checks every unpaid crypto order from the last 45 days by itself 15 seconds after it starts, and switches
+>    on the ones that were paid. To run it again: **Admin → Payments → Re-check unpaid crypto orders**.
+> 3. Pay a real $1–2 order in USDT and in Bitcoin.
+
+
 Live checkout was failing with "Something went wrong. Please try again." on every crypto payment, USDT and Bitcoin alike.
 There were two reasons:
 

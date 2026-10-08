@@ -59,13 +59,13 @@
   /* ---------- all features ---------- */
   var FEATS = [
     ['Saved forever', 'Meta deletes ads and links expire. Spyvoo keeps every video and image.', '#1F5BFF', 'shield'],
-    ['Real-time status', 'See which ads are still running, and since when, at a glance.', '#14C894', 'radar'],
+    ['Live status', 'See which ads are still running, and since when, at a glance.', '#14C894', 'radar'],
     ['Hook finder', 'The AI pulls out the first line or first 3 seconds of every winner.', '#FF3D8B', 'magnet'],
     ['Creative tests', 'See every variation an advertiser runs of the same ad.', '#7B5CFF', 'layers'],
     ['Landing pages', 'One tap to the page every ad sends traffic to.', '#FF9F1C', 'link'],
     ['Timeline', 'When it started, when it stopped, how fast they scaled.', '#0FA3B1', 'chart'],
     ['Share boards', 'Swipe files your team or client can open with one link.', '#5B3DF5', 'share'],
-    ['Email + in-app alerts', 'Hear the moment a competitor launches new ads.', '#E5484D', 'bell']
+    ['Email + in-app alerts', 'Get told when a competitor launches new ads.', '#E5484D', 'bell']
   ];
   var af = $('#allf');
   if (af) af.innerHTML = FEATS.map(function (f) { return '<div class="af" style="--c:' + f[2] + '">' + window.SV.tile(f[3], f[2], 52) + '<b>' + f[0] + '</b><p>' + f[1] + '</p></div>'; }).join('');
@@ -188,12 +188,12 @@
   function search(q) {
     out.innerHTML = '<div class="try-empty">Spying…</div>';
     get('/api/public/search?q=' + encodeURIComponent(q)).then(function (d) {
-      if (!d.items.length) { out.innerHTML = '<div class="try-empty">Nothing yet for that. Try a country or a niche, like “skincare in Mexico”.</div>'; return; }
+      if (!d.items.length) { out.innerHTML = '<div class="try-empty">Nothing yet for that. Try a niche and a country, like “skincare in Mexico”.</div>'; return; }
       var locked = d.items.filter(function (a) { return a.locked; }).length;
       out.innerHTML = d.items.map(function (a) {
-        if (a.locked) return '<div class="tr locked"><div class="ti" style="background-image:url(\'' + esc(a.thumb) + '\')"><b>' + a.days + ' days</b><s>' + a.score + '</s></div><strong>Hidden advertiser</strong><p>Sign up free to see this winning ad and everything it says.</p></div>';
+        if (a.locked) return '<div class="tr locked"><div class="ti" style="background-image:url(\'' + esc(a.thumb) + '\')"><b>' + a.days + ' days</b><s>' + a.score + '</s></div><strong>Hidden advertiser</strong><p>Sign up free to see who runs this ad and what it says.</p></div>';
         return '<div class="tr"><div class="ti" style="background-image:url(\'' + esc(a.thumb) + '\')"><b>' + a.days + ' days</b><s>' + a.score + '</s></div><strong>' + esc(a.advertiser) + ' ' + (a.countries || []).slice(0, 3).map(flag).join('') + '</strong><p>' + esc(a.text || a.headline) + '</p></div>';
-      }).join('') + (locked || d.total > d.items.length ? '<div class="try-lock"><b>' + (d.total || d.items.length) + ' ads match. See them all.</b><span style="font-weight:700;color:var(--mut)">Free plan, no card.</span><a class="btn btn-blue" href="#start" data-auth="up">Unlock all results →</a></div>' : '<div class="try-lock"><b>Want alerts when new ads like these go live?</b><span style="font-weight:700;color:var(--mut)">Free plan, no card.</span><a class="btn btn-blue" href="#start" data-auth="up">Start spying free →</a></div>');
+      }).join('') + (locked || d.total > d.items.length ? '<div class="try-lock"><b>' + (d.total || d.items.length) + ' ads match. See them all free.</b><span style="font-weight:700;color:var(--mut)">Free plan, no card.</span><a class="btn btn-blue" href="#start" data-auth="up">Unlock all results →</a></div>' : '<div class="try-lock"><b>Want an alert when new ads like these go live?</b><span style="font-weight:700;color:var(--mut)">Free plan, no card.</span><a class="btn btn-blue" href="#start" data-auth="up">Start spying free →</a></div>');
     }).catch(function () { out.innerHTML = '<div class="try-empty">Search is busy. Try again in a moment.</div>'; });
   }
   if (tf) {

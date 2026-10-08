@@ -3,12 +3,41 @@
   'use strict';
   var SV = window.SV, esc = SV.esc, I = SV.I, $ = SV.$;
 
+  // The v2 breakdown fields (scores, hook type, awareness, funnel, compliance, test ideas). Every value is model output:
+  // always escaped, numbers checked, arrays capped. Older breakdowns without them simply skip this part.
+  var PILL = 'display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-weight:800;font-size:12.5px;line-height:1.2;max-width:100%;';
+  var RISK = { low: ['#14C894', '#05271C', 'Low ban risk'], medium: ['#FFB020', '#2A1B00', 'Medium ban risk'], high: ['#FF3D5A', '#fff', 'High ban risk'] };
+  function num(n) { return typeof n === 'number' && isFinite(n) && n >= 1 && n <= 10 ? Math.round(n) : null; }
+  function list(v, n) { return Array.isArray(v) ? v.filter(function (x) { return typeof x === 'string' && x; }).slice(0, n) : []; }
+  function v2Html(an) {
+    var sc = an.scores && typeof an.scores === 'object' ? an.scores : {};
+    var scores = [['overall', 'Overall'], ['hook', 'Hook'], ['offer', 'Offer'], ['creative', 'Creative']].filter(function (k) { return num(sc[k[0]]) !== null; }).map(function (k, i) {
+      var v = num(sc[k[0]]);
+      return '<span style="' + PILL + (i === 0 && k[0] === 'overall' ? 'background:#fff;color:var(--blue)' : 'background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24)') + '" title="' + esc(k[1]) + ' score">' + esc(k[1]) + ' <b class="tnum" style="font-size:15px">' + v + '</b><small style="opacity:.7">/10</small></span>';
+    }).join('');
+    var chip = function (label, value) { return value ? '<span style="' + PILL + 'background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24)"><small style="opacity:.75;font-weight:700">' + esc(label) + '</small>' + esc(value) + '</span>' : ''; };
+    var soph = typeof an.sophistication === 'number' && an.sophistication >= 1 && an.sophistication <= 5 ? 'Level ' + Math.round(an.sophistication) + '/5' : '';
+    var cr = an.compliance_risk && RISK[an.compliance_risk.level] ? an.compliance_risk : null;
+    var chips = chip('Hook', an.hook_type) + chip('Awareness', an.awareness_stage) + chip('Sophistication', soph) + chip('Funnel', an.funnel) +
+      (cr ? '<span style="' + PILL + 'background:' + RISK[cr.level][0] + ';color:' + RISK[cr.level][1] + '">' + I('flag', ' width="13" height="13"') + RISK[cr.level][2] + '</span>' : '');
+    if (!scores && !chips) return '';
+    return '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">' +
+      (scores ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + scores + '</div>' : '') +
+      (chips ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + chips + '</div>' : '') +
+      (cr && cr.notes ? '<p style="margin:0;font-size:12.5px;font-weight:600;line-height:1.45;opacity:.9">' + esc(String(cr.notes).slice(0, 600)) + '</p>' : '') + '</div>';
+  }
+
   function aiHtml(an) {
-    return '<div class="ai-out"><div><b>Hook</b>“' + esc(an.hook) + '”</div><div><b>Offer</b>' + esc(an.offer) + '</div><div><b>Audience</b>' + esc(an.audience) + '</div>' +
+    var mech = list(an.offer_mechanics, 6), ideas = list(an.test_ideas, 5);
+    return v2Html(an) + '<div class="ai-out"><div><b>Hook</b>“' + esc(an.hook) + '”</div><div><b>Offer</b>' + esc(an.offer) +
+      (mech.length ? '<span class="trig" style="margin-top:6px">' + mech.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</span>' : '') + '</div>' +
+      '<div><b>' + (an.persona ? 'Who it targets' : 'Audience') + '</b>' + esc(an.persona || an.audience) + '</div>' +
       '<div><b>Triggers</b><span class="trig">' + (an.triggers || []).map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</span></div>' +
+      (an.angle ? '<div class="wide"><b>Angle</b>' + esc(an.angle) + (an.pacing ? '<span style="display:block;margin-top:6px;opacity:.75;font-size:13px">' + esc(an.format) + ' · ' + esc(an.pacing) + '</span>' : '') + '</div>' : '') +
       '<div class="wide"><b>Why it works</b>' + esc(an.why) + '</div><div class="wide"><b>Make your own version</b>' + esc(an.how_to_adapt) + '</div>' +
+      (ideas.length ? '<div class="wide"><b>Test this next</b><ol style="margin:0;padding-left:20px;display:grid;gap:5px">' + ideas.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ol></div>' : '') +
       (an.transcript ? '<div class="wide"><b>Transcript</b>' + esc(an.transcript.slice(0, 1200)) + '</div>' : '') + '</div>' +
-      '<p style="margin:12px 0 0;font-size:12px;opacity:.75;font-weight:700">' + (an.model === 'spyvoo-basic' && SV.isAdmin() ? 'Admin note: rule-based breakdown. Add ANTHROPIC_API_KEY for full Claude analysis.' : 'Written by Spyvoo AI from the ad’s copy, run time and reach.') + '</p>';
+      '<p style="margin:12px 0 0;font-size:12px;opacity:.75;font-weight:700">' + (an.model === 'spyvoo-basic' && SV.isAdmin() ? 'Admin note: rule-based breakdown. Add an AI key in Admin → Ad data & AI for the full expert analysis.' : 'Written by Spyvoo AI from the ad’s copy, run time and reach. Scores are estimates, not spend data.') + '</p>';
   }
   function lockedHtml(d) {
     var m = SV.state.meter ? SV.state.meter.analyses : { used: 0, limit: 5 };
@@ -97,10 +126,13 @@
       var btn = this.querySelector('button'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Writing…';
       SV.post('/api/app/ads/' + a.id + '/mine', { product: $('#product', el).value }).then(function (r) {
         btn.disabled = false; btn.innerHTML = I('wand') + 'Write again';
-        $('#mineOut', el).innerHTML = '<div class="scripts">' + r.scripts.map(function (s, i) { return '<div class="script" style="animation-delay:' + (i * .1) + 's"><b>' + esc(s.title) + '</b><q>' + esc(s.hook) + '</q><p>' + esc(s.body) + '</p><p style="margin-top:6px;font-weight:800;color:var(--blue)">Button: ' + esc(s.cta) + '</p></div>'; }).join('') + '</div>' +
+        $('#mineOut', el).innerHTML = '<div class="scripts">' + r.scripts.map(function (s, i) { return '<div class="script" style="animation-delay:' + (i * .1) + 's"><b>' + esc(s.title) + (s.hook_type ? ' <small style="font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--violet);margin-left:4px">' + esc(s.hook_type) + '</small>' : '') + '</b><q' + (/[“”"]/.test(s.hook) ? ' class="noq"' : '') + '>' + esc(s.hook) + '</q>' +
+            (s.first_3s ? '<p style="margin-bottom:6px"><b style="display:inline;font:800 12px/1 var(--body)">First 3 seconds: </b>' + esc(s.first_3s) + '</p>' : '') +
+            (s.on_screen_text ? '<p style="margin-bottom:6px"><b style="display:inline;font:800 12px/1 var(--body)">On screen: </b>“' + esc(s.on_screen_text) + '”</p>' : '') +
+            '<p>' + esc(s.body) + '</p><p style="margin-top:6px;font-weight:800;color:var(--blue)">Button: ' + esc(s.cta) + '</p></div>'; }).join('') + '</div>' +
           '<div class="heads">' + r.headlines.map(function (h) { return '<span>' + esc(h) + '</span>'; }).join('') + '</div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost sm" type="button" id="cpAll">' + I('copy') + 'Copy all</button><a class="btn sm" style="background:#F25C2A" href="https://vooads.com/?utm_source=spyvoo&utm_medium=make-it-mine" target="_blank" rel="noopener">' + I('video') + 'Send to Vooads</a></div>';
-        $('#cpAll', el).onclick = function () { SV.copy(r.scripts.map(function (s) { return s.title + '\nHook: ' + s.hook + '\n' + s.body + '\nButton: ' + s.cta; }).join('\n\n') + '\n\nHeadlines:\n' + r.headlines.join('\n'), 'Scripts'); };
+        $('#cpAll', el).onclick = function () { SV.copy(r.scripts.map(function (s) { return s.title + (s.hook_type ? ' (' + s.hook_type + ')' : '') + '\nHook: ' + s.hook + (s.first_3s ? '\nFirst 3 seconds: ' + s.first_3s : '') + (s.on_screen_text ? '\nOn screen: ' + s.on_screen_text : '') + '\n' + s.body + '\nButton: ' + s.cta; }).join('\n\n') + '\n\nHeadlines:\n' + r.headlines.join('\n'), 'Scripts'); };
         SV.refreshMeter();
       }).catch(function (err) { btn.disabled = false; btn.innerHTML = I('wand') + 'Write my scripts'; SV.fail(err); });
     };

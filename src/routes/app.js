@@ -50,8 +50,8 @@ module.exports = function (app) {
       family: familySlides(), niches: settings.get('niches'), platforms: p,
       ctas: Object.entries(ads.CTA).filter(([k]) => ['SIGN_UP', 'LEARN_MORE', 'INSTALL_MOBILE_APP', 'SHOP_NOW', 'ORDER_NOW', 'DOWNLOAD', 'WHATSAPP_MESSAGE', 'SEND_MESSAGE', 'BOOK_TRAVEL', 'APPLY_NOW', 'GET_OFFER', 'SUBSCRIBE', 'PLAY_GAME', 'CONTACT_US'].includes(k)).map(([k, v]) => ({ id: k, label: v })),
       countries: countries.list(), stats: ads.stats(), ai: ai.live(), voosquare: require('../services/voosquare').publicInfo(),
-      support_email: settings.get('company').support_email,
-      ...(req.user.role === 'admin' ? { admin: { maintenance: !!settings.get('flags').maintenance, signups: settings.get('flags').signups !== false } } : {})
+      support_email: settings.get('company').support_email, support: require('../services/support').enabled() ? require('../services/support').agentInfo() : null,
+      ...(req.user.role === 'admin' ? { admin: { maintenance: !!settings.get('flags').maintenance, signups: settings.get('flags').signups !== false, support_waiting: require('../services/support').waiting() } } : {})
     };
   });
 
@@ -242,7 +242,7 @@ module.exports = function (app) {
       // Paid orders are financial records, so they stay. Everything personal goes and the account is closed.
       db.tx(() => {
         db.run('UPDATE users SET team_owner_id = NULL WHERE team_owner_id = ?', id);
-        for (const t of ['sessions', 'tokens', 'ad_scripts', 'boards', 'follows', 'saved_searches', 'notifications', 'usage', 'unlocks', 'views']) db.run('DELETE FROM ' + t + ' WHERE user_id = ?', id);
+        for (const t of ['sessions', 'tokens', 'ad_scripts', 'boards', 'follows', 'saved_searches', 'notifications', 'usage', 'unlocks', 'views', 'support_threads']) db.run('DELETE FROM ' + t + ' WHERE user_id = ?', id);
         db.run("DELETE FROM orders WHERE user_id = ? AND status != 'paid'", id);
         db.update('users', id, { email: 'deleted-' + id + '@deleted.invalid', name: 'Deleted account', password_hash: '', country: '', voo_id: null, suspended: 1, marketing_opt_out: 1, plan_id: 'free', plan_renews_at: null });
       });

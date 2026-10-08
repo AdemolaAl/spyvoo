@@ -168,7 +168,7 @@ function fulfill(ref, { via = 'manual', provider_ref: pref } = {}) {
     const gv = require('./gatevoo');
     require('./mailer').send(result.user.email, 'payment-receipt', {
       name: (result.user.name || '').split(' ')[0] || 'there', plan: account.plan(result.plan_id).name, interval: result.interval, amount: result.amount_usd.toFixed(2), currency: 'USD', reference: result.ref,
-      date: longDate(), renew_date: longDate(result.renews), coin: meta.coin ? (gv.COINS[meta.coin] || {}).label + ' (' + (gv.COINS[meta.coin] || {}).network + ')' : '', dashboard_url: config.appUrl + '/app'
+      date: longDate(), renew_date: longDate(result.renews), coin: meta.coin ? (gv.COINS[meta.coin] ? gv.COINS[meta.coin].label + ' (' + gv.COINS[meta.coin].network + ')' : String(meta.coin).slice(0, 30)) : '', dashboard_url: config.appUrl + '/app'
     });
     // VooSquare: spend (+ plan_started / plan_renewed) with a stable id built from the order id.
     try { require('./voosquare').paymentEvents(db.one('SELECT * FROM orders WHERE ref = ?', ref)); } catch (e) { console.error('[voosquare] payment events', e.message); }

@@ -320,6 +320,7 @@ module.exports = function (app) {
   app.patch('/api/admin/payments/methods/:id', req => { A(req); const m = db.one('SELECT * FROM payment_methods WHERE id = ?', Number(req.params.id)); if (!m) throw new HttpError(404, 'Not found'); db.update('payment_methods', m.id, methodIn(req.body || {}, m)); audit(req, 'method_update', m.name); return { ok: true }; });
   app.del('/api/admin/payments/methods/:id', req => { A(req); db.run('DELETE FROM payment_methods WHERE id = ?', Number(req.params.id)); audit(req, 'method_delete', req.params.id); return { ok: true }; });
   app.post('/api/admin/payments/gatevoo/ping', async req => { A(req); return require('../services/gatevoo').ping(); });
+  app.post('/api/admin/payments/gatevoo/recheck', async req => { A(req); const r = await require('../services/gatevoo').recheckAll(); audit(req, 'gatevoo_recheck', r); return r; });
   // Reorder: move a method one place up (-1) or down (+1); sort numbers are rewritten 10, 20, 30...
   app.post('/api/admin/payments/methods/:id/move', req => {
     A(req);
@@ -413,7 +414,7 @@ module.exports = function (app) {
   });
 
   /* ---------- settings ---------- */
-  const EDITABLE = ['platforms', 'score', 'announcement', 'offer', 'family', 'niches', 'company', 'billing', 'flags'];
+  const EDITABLE = ['platforms', 'score', 'announcement', 'offer', 'family', 'niches', 'company', 'billing', 'flags', 'support'];
   app.get('/api/admin/settings', req => { A(req); const s = settings.all(); return Object.fromEntries(EDITABLE.map(k => [k, s[k]])); });
   app.patch('/api/admin/settings/:group', req => {
     A(req);
@@ -427,6 +428,7 @@ module.exports = function (app) {
       if (bad) throw new HttpError(400, (String(bad.name || '').trim() || 'A new brand') + ' needs a name, a headline and a full link (https://…).');
       v = v.slice(0, 12).map(f => ({ key: String(f.key || f.name || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30), name: String(f.name || '').slice(0, 30), tag: String(f.tag || '').slice(0, 20), title: String(f.title || '').slice(0, 80), text: String(f.text || '').slice(0, 240), perk: String(f.perk || '').slice(0, 40), url: /^https?:\/\//.test(f.url || '') ? String(f.url).slice(0, 200) : '#', color: /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : '#1F5BFF', ink: /^#[0-9a-f]{6}$/i.test(f.ink) ? f.ink : '#FFFFFF', accent: /^#[0-9a-f]{6}$/i.test(f.accent || '') ? f.accent : '', on: f.on !== false })); }
     if (g === 'score') { const cur = settings.get('score'); v = Object.fromEntries(Object.keys(cur).map(k => [k, num((v || {})[k], cur[k], 0, 1000)])); }
+    if (g === 'support') { const cur = settings.get('support'); v = v || {}; v = { on: v.on !== undefined ? !!v.on : cur.on, ai: v.ai !== undefined ? !!v.ai : cur.ai, public_chat: v.public_chat !== undefined ? !!v.public_chat : cur.public_chat, agent_name: String(v.agent_name ?? cur.agent_name).replace(/[^\p{L}\p{N} .'-]/gu, '').trim().slice(0, 30) || 'Leo', agent_role: String(v.agent_role ?? cur.agent_role).replace(/[<>]/g, '').trim().slice(0, 40) || 'Spyvoo support', look: ['spy', 'host', 'guide', 'fan'].includes(v.look) ? v.look : cur.look, visitor_daily_ai: Math.floor(num(v.visitor_daily_ai, cur.visitor_daily_ai, 0, 100000)), daily_ai_free: Math.floor(num(v.daily_ai_free, cur.daily_ai_free, 0, 100000)), daily_ai_paid: Math.floor(num(v.daily_ai_paid, cur.daily_ai_paid, 0, 100000)), daily_ai_total: Math.floor(num(v.daily_ai_total, cur.daily_ai_total, 0, 1000000)), extra_knowledge: String(v.extra_knowledge ?? cur.extra_knowledge).slice(0, 6000) }; }
     if (g === 'billing') { const cur = settings.get('billing'); v = { renew_reminder_days: num((v || {}).renew_reminder_days, cur.renew_reminder_days, 0, 30), grace_days: num((v || {}).grace_days, cur.grace_days, 0, 30), pending_expire_days: Math.floor(num((v || {}).pending_expire_days, cur.pending_expire_days || 7, 1, 90)) }; }
     if (g === 'platforms') { v = Object.fromEntries(Object.entries(v || {}).filter(([, x]) => ['live', 'soon', 'off'].includes(x))); }
     if (g === 'offer' && v && v.code) { v.code = String(v.code).toUpperCase(); if (v.on && !db.one('SELECT code FROM coupons WHERE code = ?', v.code)) throw new HttpError(400, 'Create the coupon ' + v.code + ' first (Payments → Coupons), so the offer works at checkout.'); }

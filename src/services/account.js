@@ -82,7 +82,8 @@ function publicUser(u) {
   const o = owner(u);
   return {
     id: u.id, email: u.email, name: u.name, country: u.country, role: u.role, email_verified: !!u.email_verified, voo: !!u.voo_id,
-    plan: { id: p.id, name: p.name, interval: o.plan_interval, renews_at: p.id === 'free' ? null : o.plan_renews_at, team_owner: u.team_owner_id ? { name: o.name, email: o.email } : null, seats: p.seats },
+    // Admins hold every feature: they read "Owner", never a plan a customer could mistake for theirs.
+    plan: { id: p.id, name: u.role === 'admin' ? 'Owner' : p.name, paid: u.role !== 'admin' && p.id !== 'free', owner: u.role === 'admin', interval: o.plan_interval, renews_at: p.id === 'free' ? null : o.plan_renews_at, team_owner: u.team_owner_id ? { name: o.name, email: o.email } : null, seats: p.seats },
     onboarding: db.json(u.onboarding, {}), created_at: u.created_at
   };
 }

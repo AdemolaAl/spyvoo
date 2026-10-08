@@ -13,13 +13,40 @@
     { href: '/app/account', label: 'Account', icon: 'user', re: /^\/app\/account/ }
   ];
 
+
+  // Member badge ("agent ID"): each paid plan is a clearance level. Owner reads as level 3 in gold.
+  var EYES = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="20" cy="33" r="12" fill="currentColor"/><circle cx="44" cy="33" r="12" fill="currentColor"/><circle class="pupil" cx="21.5" cy="33" r="5.2"/><circle class="pupil" cx="45.5" cy="33" r="5.2"/></svg>';
+  SV.tier = function (u) {
+    var pl = (u && u.plan) || {};
+    if (!pl.paid && !pl.owner) return null;
+    var lvl = pl.owner ? 3 : ({ starter: 1, pro: 2, agency: 3 })[pl.id] || 2;
+    var key = pl.owner ? 'owner' : ({ 1: 'starter', 2: 'pro', 3: 'agency' })[lvl];
+    var name = pl.owner ? 'Owner' : pl.name;
+    return { lvl: lvl, key: key, name: name, label: pl.owner ? 'Owner' : name + ' agent' };
+  };
+  SV.tierPips = function (t) { var h = '<span class="pips" aria-hidden="true">'; for (var i = 1; i <= 3; i++) h += '<i' + (i <= t.lvl ? ' class="on"' : '') + '></i>'; return h + '</span>'; };
+  SV.tierEyes = EYES;
+  // The ID card shown when a payment confirms.
+  SV.agentCard = function (u, t, ref) {
+    var since = SV.date ? SV.date(u.created_at || Date.now()) : '';
+    var nm = String(u.name || (u.email || '').split('@')[0] || 'Agent');
+    var initials = nm.trim().split(/\s+/).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase() || 'SV';
+    var id = String(ref || u.id || '').replace(/[^A-Za-z0-9]/g, '').slice(-6).toUpperCase();
+    return '<div class="agent-card t-' + t.key + '" role="img" aria-label="' + esc(t.name) + ' member card">' +
+      '<i class="ac-slot"></i><i class="ac-holo"></i><i class="ac-scan"></i>' +
+      '<div class="ac-head"><span class="ac-mark">' + EYES + '</span><b>Spyvoo</b>' + (id ? '<small>ID ' + esc(id) + '</small>' : '') + '</div>' +
+      '<div class="ac-who"><span class="ac-photo">' + esc(initials) + '</span><div><small>' + (t.key === 'owner' ? 'Station chief' : 'Field agent') + '</small><b>' + esc(nm) + '</b><small>Since ' + esc(since) + '</small></div></div>' +
+      '<div class="ac-foot"><span class="ac-plan">' + esc(t.name) + '</span><span class="ac-clear"><small>Clearance · LVL 0' + t.lvl + '</small>' + SV.tierPips(t) + '</span></div>' +
+      '<i class="ac-code"></i></div>';
+  };
+
   SV.setTheme = function (t) {
     document.documentElement.setAttribute('data-theme', t);
     try { localStorage.setItem('sv-theme', t); } catch (e) { /* private mode */ }
   };
 
   SV.shell = function () {
-    var b = SV.state.boot, u = b.user;
+    var b = SV.state.boot, u = b.user, tier = SV.tier(u);
     $('#side').innerHTML = '<a class="brand" href="/app"><span class="mark">' + SV.MARK + '</span><span class="word">Spy<b>voo</b></span></a>' +
       '<nav class="nav">' + NAV.map(function (n) { return '<a href="' + n.href + '" data-nav="' + n.href + '">' + SV.G(n.icon) + '<span>' + n.label + '</span>' + (n.count && b.unread ? '<span class="count">' + b.unread + '</span>' : '') + '</a>'; }).join('') +
       (u.role === 'admin' ? '<div class="nav-sep"></div><a href="/admin" target="_self">' + I('sliders') + '<span>Admin panel</span></a>' : '') + '</nav>' +
@@ -28,9 +55,10 @@
       (b.voosquare && b.voosquare.app_url ? '<a class="voo-part" href="' + esc(b.voosquare.app_url) + '" target="_blank" rel="noopener">Part of <b>VooSquare</b></a>' : '') + '</div>';
     $('#top').innerHTML = '<a class="m-brand" href="/app"><span class="mark">' + SV.MARK + '</span><span class="word">Spy<b>voo</b></span></a>' +
       '<form class="ask" id="topAsk" role="search"><svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="topQ" placeholder="Ask Spyvoo… “crypto ads in Brazil over 30 days”" autocomplete="off" aria-label="Search ads"><span class="kbd">/</span><button class="ai" type="submit">' + I('spark', ' width="14" height="14"') + 'Spy</button></form>' +
-      '<div class="top-actions"><button class="tour-btn" type="button" id="tourBtn"><i>' + I('play', ' width="14" height="14"') + '</i><span class="lbl">How it works</span></button>' +
+      '<div class="top-actions"><button class="tour-btn" type="button" id="tourBtn"><i>' + I('play', ' width="14" height="14"') + '</i><span class="lbl">How it works</span><span class="lbl-s">Tour</span></button>' +
       '<button class="icon-btn" type="button" id="bell" aria-label="Notifications">' + SV.G('bell') + (b.unread ? '<span class="dot">' + b.unread + '</span>' : '') + '</button>' +
-      '<button class="avatar" type="button" id="me" aria-label="Account menu">' + SV.avatar(u.email) + '</button></div>';
+      (tier ? '<a class="tier-pill t-' + tier.key + '" href="/app/plan" title="Your plan: ' + esc(tier.name) + '"><span class="eyes">' + EYES + '</span><span class="tp-lbl">' + esc(tier.label) + '</span>' + SV.tierPips(tier) + '</a>' : '') +
+      '<button class="avatar' + (tier ? ' prem t-' + tier.key : '') + '" type="button" id="me" aria-label="Account menu">' + SV.avatar(u.email) + (tier ? '<span class="agent-clip" aria-hidden="true">' + esc(tier.key === 'owner' ? 'OWNER' : tier.name.toUpperCase()) + '</span>' : '') + '</button></div>';
     $('#tabbar').innerHTML = '<a href="/app" data-nav="/app">' + SV.G('home') + 'Home</a><a href="/app/discover" data-nav="/app/discover">' + SV.G('compass') + 'Discover</a>' +
       '<button class="fab" type="button" id="fab" aria-label="Search">' + I('search') + '</button>' +
       '<a href="/app/boards" data-nav="/app/boards">' + SV.G('boards') + 'Boards</a><a href="/app/alerts" data-nav="/app/alerts">' + SV.G('bell') + 'Alerts</a>';
@@ -48,7 +76,7 @@
   function drawMeter() {
     var m = SV.state.meter, el = $('#sideMeter'); if (!el || !m) return;
     var row = function (k, label) { var x = m[k], p = SV.pct(x); return '<div class="row"><span>' + label + '</span><span class="tnum">' + SV.limitText(x) + '</span></div><div class="bar' + (p > 85 && x.limit !== -1 ? ' warn' : '') + '" style="margin-bottom:10px"><i style="width:' + p + '%"></i></div>'; };
-    el.innerHTML = '<div class="row" style="margin-bottom:10px"><b style="color:var(--ink)">' + esc(SV.state.boot.user.plan.name) + ' plan</b><a href="/app/plan" style="color:var(--blue)">Usage</a></div>' + row('searches', 'Searches today') + row('analyses', 'AI breakdowns');
+    el.innerHTML = '<div class="row" style="margin-bottom:10px"><b style="color:var(--ink)">' + esc(SV.state.boot.user.plan.owner ? 'Owner · full access' : SV.state.boot.user.plan.name + ' plan') + '</b><a href="/app/plan" style="color:var(--blue)">Usage</a></div>' + row('searches', 'Searches today') + row('analyses', 'AI breakdowns');
   }
   SV.refreshMeter = function () {
     clearTimeout(SV._mt);
@@ -82,13 +110,14 @@
 
   function meMenu(btn) {
     var u = SV.state.boot.user, dark = document.documentElement.getAttribute('data-theme') === 'dark';
-    var p = SV.popover(btn, '<div class="menu"><div class="who"><b>' + esc(u.name) + '</b><small>' + esc(u.email) + '</small><br><span class="plan-chip">' + I('crown', ' width="12" height="12"') + esc(u.plan.name) + '</span></div>' +
+    var p = SV.popover(btn, '<div class="menu"><div class="who"><b>' + esc(u.name) + '</b><small>' + esc(u.email) + '</small><br>' + (SV.tier(u) ? '<span class="plan-chip agent t-' + SV.tier(u).key + '"><span class="eyes">' + EYES + '</span>' + esc(SV.tier(u).label) + SV.tierPips(SV.tier(u)) + '</span>' : '<span class="plan-chip">' + esc(u.plan.name) + '</span>') + '</div>' +
       '<a href="/app/account">' + I('user') + 'Account</a><a href="/app/plan">' + I('crown') + 'Plan & billing</a><button type="button" id="mt">' + I(dark ? 'sun' : 'moon') + (dark ? 'Light mode' : 'Dark mode') + '</button><button type="button" id="mtour">' + I('play') + 'Replay the tour</button>' +
-'<a href="/app/scripts">' + I('wand') + 'AI scripts</a>' + (u.role === 'admin' ? '<a href="/admin" target="_self">' + I('sliders') + 'Admin panel</a>' : '') + '<button type="button" id="mlo">' + I('logout') + 'Log out</button></div>');
+'<a href="/app/scripts">' + I('wand') + 'AI scripts</a>' + (SV.state.boot.support ? '<button type="button" id="msup">' + I('spark') + 'Chat with ' + esc(SV.state.boot.support.name) + ' (support)</button>' : '') + (u.role === 'admin' ? '<a href="/admin" target="_self">' + I('sliders') + 'Admin panel</a>' : '') + '<button type="button" id="mlo">' + I('logout') + 'Log out</button></div>');
     var r = btn.getBoundingClientRect(); p.style.left = Math.max(12, r.right - p.offsetWidth) + 'px';
     SV.$$('.menu a', p).forEach(function (a) { a.addEventListener('click', SV.closePop); });
     $('#mt').onclick = function () { SV.setTheme(dark ? 'light' : 'dark'); SV.closePop(); };
     $('#mtour').onclick = function () { SV.closePop(); SV.tour.start(); };
+    if ($('#msup')) $('#msup').onclick = function () { SV.closePop(); if (SV.openSupport) SV.openSupport(); };
     $('#mlo').onclick = function () { SV.post('/api/auth/logout').then(function () { location.href = SV.state.boot.voosquare.enabled && SV.state.boot.user.voo ? '/auth/voosquare/logout' : '/'; }); };
   }
 

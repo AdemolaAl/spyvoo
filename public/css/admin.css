@@ -190,3 +190,10 @@ textarea.input { min-height: 96px; resize: vertical; line-height: 1.5; }
   .tbl td.acts::before, .tbl td[data-l=""]::before { display: none; }
   .tbl td.acts { text-align: left; }
 }
+
+/* phone: the admin top bar and tabs are solid enough that content scrolling under them never shows through */
+@media (max-width: 920px) {
+  .adm { --adm-tabs-h: 58px; }
+  .adm .top { background: color-mix(in srgb, var(--bg) 97%, transparent); }
+  .adm-tabs { background: color-mix(in srgb, var(--bg) 97%, transparent); min-height: var(--adm-tabs-h); align-items: center; box-shadow: 0 1px 0 var(--line); }
+}

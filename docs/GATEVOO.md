@@ -7,139 +7,98 @@ checkout. The money goes straight to the Zedapex wallet, and orders activate on 
 | --- | --- | --- |
 | **Live** | `GATEVOO_API_KEY` and `GATEVOO_WEBHOOK_SECRET` are set | Gatevoo's real hosted payment page |
 | **Sandbox** | No keys, `PAYMENTS_DEMO=true` | A practice Gatevoo page at `/pay/gatevoo/<ref>`, with no real coins |
-| **Off** | No keys, `PAYMENTS_DEMO=false` | No crypto option (a manual method such as bank transfer shows if you switch one on) |
+| **Off** | No keys, `PAYMENTS_DEMO=false` | No crypto option (a custom method such as bank transfer shows if you switch one on) |
 
-## 1. Go live (5 minutes)
+## What was broken (October 2026) and what changed
 
-1. In the Gatevoo dashboard, create an API key for Spyvoo and a webhook secret.
-2. Add the webhook URL `https://spyvoo.com/webhooks/gatevoo` (Admin → Payments shows it with a Copy button).
-3. On Railway, set:
+Spyvoo had been built to a different Gatevoo contract than the Gatevoo that is running, so the two apps talked past
+each other:
+
+| Symptom | Cause | Fixed in |
+| --- | --- | --- |
+| "Test payment connection" said the address was wrong (404) | Spyvoo called `GET /me`, which Gatevoo did not have | Gatevoo now has `GET /api/v1/me`; Spyvoo also falls back if it's missing |
+| **Paid orders never switched the plan on** ("underpaid") | Spyvoo needed `paid_usd`; Gatevoo never sent it, so every paid order looked short | Gatevoo now sends `paid_usd` (measured from what arrived); Spyvoo also reads the old answer correctly |
+| Customer not sent back to Spyvoo after paying | Spyvoo sent `success_url`; Gatevoo reads `redirect_url` | Spyvoo sends both; Gatevoo accepts both |
+| Coin and transaction not shown on the order | Different field names (`method`/`txid` vs `coin`/`tx_hash`) | Both sides read and send both |
+
+Either app alone already fixes the main problem, so the deploy order doesn't matter. **Orders paid while it was broken
+heal by themselves**: about 15 seconds after Spyvoo starts, it asks Gatevoo again about every unpaid crypto order from
+the last 45 days and switches on the ones that were paid. You can run the same thing any time with **Admin → Payments →
+Re-check unpaid crypto orders**.
+
+## 1. Go live (10 minutes)
+
+1. **Gatevoo dashboard → Connect → Add app** "Spyvoo", webhook URL `https://spyvoo.com/webhooks/gatevoo`.
+   Copy the **API key** (`gv_live_…`) and the **webhook secret** (`whsec_…`). They are shown once; if lost, press
+   *New key* / *New secret* there.
+2. **Railway → Spyvoo → Variables**:
    ```
    GATEVOO_API_KEY=gv_live_...
-   GATEVOO_WEBHOOK_SECRET=...
-   # Optional, only if Gatevoo's API lives somewhere else (default https://gatevoo.com/api/v1):
+   GATEVOO_WEBHOOK_SECRET=whsec_...
+   # Optional. Default https://gatevoo.com/api/v1. Delete it if it says api.gatevoo.com (that host doesn't exist).
    GATEVOO_API_URL=https://gatevoo.com/api/v1
    ```
-4. Open **Admin → Payments** and press **Test payment connection**. It should say "Connected … API key accepted".
-   If not, it says exactly why (see [PAYMENTS_CHECKLIST.md](PAYMENTS_CHECKLIST.md)).
-5. Pick the coins in **Admin → Payments → Payment methods → Crypto** (USDT_TRC20, BTC or both). Switching the method off hides it.
+3. **Admin → Payments → Test payment connection**. It should say "Connected … as Zedapex. API key accepted." It also
+   warns if Gatevoo has no webhook URL for the app, or if Spyvoo offers a coin Gatevoo has no wallet for.
+4. **Admin → Payments → Payment methods → Crypto**: switch on only the coins Gatevoo has wallets for. (Gatevoo shows the
+   customer every coin it has a wallet for; Spyvoo's coin list decides what Spyvoo's checkout offers.)
+5. **Gatevoo → Connect → Spyvoo → Send test webhook**. "Delivered" means the secret matches. A 401 means
+   `GATEVOO_WEBHOOK_SECRET` is not the same as Gatevoo's secret for this app.
+6. Pay a real $1–2 order in USDT and in Bitcoin. The plan switches on, Gatevoo shows the webhook as delivered, and you
+   land back on Plan & billing.
 
 ## 2. How a payment flows
 
 1. The customer picks **Crypto** at checkout, chooses USDT or Bitcoin, and presses **Pay**.
-2. Spyvoo creates an order (`provider = gatevoo`, status `pending`) and calls `POST /invoices` on Gatevoo.
-3. The customer is redirected to the invoice's `checkout_url`, where they pay.
-4. Gatevoo calls `POST /webhooks/gatevoo` (signed). Spyvoo **does not trust the body**: it fetches the invoice from
-   Gatevoo again (`GET /invoices/:id`) and only then activates the order.
-5. Gatevoo sends the customer to `success_url` (`/pay/callback?ref=...`). The dashboard shows "Confirming your
-   payment" and then "Payment received!".
+2. Spyvoo creates an order (`provider = gatevoo`, status `pending`) and calls `POST /api/v1/invoices` on Gatevoo.
+3. The customer is sent to the invoice's `checkout_url` (`https://gatevoo.com/pay/inv_…`) and pays the exact amount.
+4. Gatevoo's watcher sees the coins and marks the invoice paid, then calls `POST /webhooks/gatevoo` (signed).
+   Spyvoo **does not trust the body**: it fetches the invoice again (`GET /api/v1/invoices/:id`) and only then
+   activates the order.
+5. Gatevoo sends the customer to `redirect_url` (`/pay/callback?ref=…`). The dashboard shows "Payment received!".
 
-The checks Spyvoo makes:
+Checks Spyvoo makes before switching a plan on:
 
-- The invoice id must match the one stored on the order.
-- The order only activates when status is `paid`/`confirmed`/`completed` **and** `paid_usd` is at least the order total
-  (1 cent tolerance).
-- Underpaid invoices stay pending and are flagged in Admin → Payments → Orders for a person to sort out.
-- `expired` / `cancelled` / `failed` invoices mark the order failed.
-- Webhooks are idempotent. A replay never extends the plan twice.
+- the invoice id must match the one stored on the order, and the invoice's `order_id` must be this order;
+- status `paid` **and** `paid_usd` ≥ the order total (1 cent tolerance). Gatevoo counts a transfer it matched as full
+  (exact amount, up to 10 % over, or Bitcoin within 1 %) as the whole invoice; anything less is reported as what
+  arrived, and Spyvoo flags the order **underpaid** for a person instead;
+- `expired` / `cancelled` invoices mark a pending order failed, but a late payment (Gatevoo matches for 24 hours after
+  expiry) still activates it;
+- refunded, charged-back and rejected orders are never switched back on;
+- webhooks are idempotent: a replay never extends the plan twice.
 
-Admins can press **Check** on any pending Gatevoo order in Admin → Payments → Orders to ask Gatevoo again. Paid orders
-show the coin, the amount, and a link to the transaction on Tronscan or mempool.space.
+Admins can press **Check** on any Gatevoo order in Admin → Payments → Orders. The support agent does the same when a
+customer says "I paid" (see [SUPPORT.md](SUPPORT.md)).
 
-## 3. API contract Gatevoo must provide
+## 3. The contract (what Gatevoo really does)
 
-Base URL: `GATEVOO_API_URL` (default `https://gatevoo.com/api/v1`, the address the other Voo apps use). Every request sends
-`Authorization: Bearer <GATEVOO_API_KEY>`. Responses are JSON, either the object itself or wrapped in `{ "data": ... }`.
-Errors use a non-2xx status with `{ "error": { "message": "..." } }`.
+Base URL `GATEVOO_API_URL` (default `https://gatevoo.com/api/v1`). Every call sends `Authorization: Bearer <key>`.
+Errors are non-2xx with `{ "error": "message" }`.
 
-### `GET /me`
-Used by "Test payment connection". Returns `{ "name": "Zedapex" }` or `{ "merchant": { "name": "Zedapex" } }` (any 2xx means the key works; 401 means a bad key).
+**`GET /me`** → `{ name, merchant: { name }, app: { id, name, webhook_url_set }, methods: ["USDT_TRC20", "BTC"] }`. 401 = bad key.
 
-### `POST /invoices`
-Header `Idempotency-Key: spyvoo-<order ref>`: the same key must return the same invoice.
+**`POST /invoices`** (Spyvoo sends these fields; Gatevoo ignores unknown ones)
 ```json
-{
-  "reference": "SV-MUSHVY5M-35E9E1",
-  "amount": { "value": "79.00", "currency": "USD" },
-  "coins": ["USDT_TRC20", "BTC"],
-  "preferred_coin": "BTC",
-  "description": "Spyvoo · Pro plan (monthly)",
-  "customer": { "email": "buyer@example.com", "name": "Grace Lee" },
-  "success_url": "https://spyvoo.com/pay/callback?ref=SV-...",
-  "cancel_url": "https://spyvoo.com/app/plan?cancelled=SV-...",
-  "webhook_url": "https://spyvoo.com/webhooks/gatevoo",
-  "expires_in": 3600,
-  "metadata": { "app": "spyvoo", "user_id": 12, "plan": "pro", "interval": "month" }
-}
+{ "order_id": "SV-…", "reference": "SV-…", "amount_usd": 79, "amount": { "value": "79.00", "currency": "USD" },
+  "description": "Spyvoo · Pro plan (monthly)", "customer_email": "…", "customer_name": "…",
+  "redirect_url": "https://spyvoo.com/pay/callback?ref=SV-…", "expires_in_min": 60,
+  "metadata": { "app": "spyvoo", "user_id": 12, "plan": "pro", "interval": "month" } }
 ```
-Response (201):
+The same `order_id` asked again while its checkout is open returns the same invoice. `redirect_url` must be https.
+
+**Invoice** (from `POST`, `GET /invoices/:id` and the webhook's `data`)
 ```json
-{ "id": "inv_123", "reference": "SV-...", "status": "pending", "checkout_url": "https://pay.gatevoo.com/i/inv_123", "expires_at": "2026-10-03T15:00:00Z" }
+{ "id": "inv_…", "status": "open | confirming | paid | expired | cancelled", "amount_usd": 79,
+  "order_id": "SV-…", "reference": "SV-…", "method": "USDT_TRC20", "coin": "USDT_TRC20",
+  "pay_amount": "79.13", "address": "T…", "received": "79.13", "txid": "…", "tx_hash": "…",
+  "paid_usd": 79, "payment": { "coin": "USDT_TRC20", "amount": "79.13", "tx_hash": "…", "confirmations": 1, "amount_usd": 79 },
+  "late": false, "overpaid": false, "duplicate_of": null, "checkout_url": "https://gatevoo.com/pay/inv_…",
+  "created_at": "…", "expires_at": "…", "paid_at": "…" }
 ```
-`checkout_url` must be `https://`.
 
-### `GET /invoices/:id`
-```json
-{
-  "id": "inv_123",
-  "reference": "SV-...",
-  "status": "pending | confirming | paid | underpaid | expired | cancelled",
-  "paid_usd": 79.00,
-  "payment": { "coin": "USDT_TRC20", "amount": "79.00", "tx_hash": "abc...", "confirmations": 20 }
-}
-```
-`paid_usd` is the USD value Gatevoo credits, worked out at the locked rate.
-
-### Webhook `POST <webhook_url>`
-Body: `{ "type": "invoice.paid", "data": { "id": "inv_123", "reference": "SV-...", ... } }`. Send it on every status change.
-
-Header: `X-Gatevoo-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>`. Spyvoo rejects
-signatures older than 5 minutes. Retry with backoff on non-2xx for up to 24 hours.
-
-**Voo family contract (VooSquare `docs/GATEVOO.md`).** Gatevoo is being built to the contract in the voosquare-app repo,
-which differs from the one above. Spyvoo accepts both, so it works with either:
-
-| | Spyvoo contract (above) | Voo family contract |
-| --- | --- | --- |
-| Create | `POST /invoices` `{ reference, amount: { value, currency }, coins }` | `POST /api/v1/invoices` `{ order_id, amount_usd, assets, customer_email }` (Spyvoo sends both sets of fields) |
-| Read | `{ id, reference, status, paid_usd, payment: { coin, tx_hash } }` | `{ id, order_id, status, paid_amount, asset, tx_hash }` |
-| Webhook body | `{ data: { reference } }` | `{ type: "invoice.paid", invoice: { id, order_id, … } }` |
-| Signature | `t=…,v1=…` (HMAC of `t.body`) | plain lowercase hex HMAC-SHA256 of the raw body (Voo Connect `verifyGatevooSignature`) |
-
-With the family contract, `GATEVOO_API_URL` is `https://gatevoo.com/api/v1` (the default; Spyvoo appends `/invoices`, `/me`). A bare `https://gatevoo.com` gets `/api/v1` added.
-Either way the webhook only triggers a fresh `GET` of the invoice; the order activates only when it is `paid` and the USD
-received covers the order. Each confirmed payment is then reported to VooSquare as a `spend` (docs/VOOSQUARE.md);
-Gatevoo itself never reports Spyvoo's payments.
-
-Coins: `USDT_TRC20` (USDT on TRON) and `BTC`. More can be added later. Spyvoo shows whatever the admin switches on.
-
-## 4. Prompt for the Gatevoo builder
-
-Paste this into the AI that builds Gatevoo so the two sides fit:
-
-```
-Add a merchant API to Gatevoo so Zedapex apps (starting with Spyvoo) can take USDT (TRC20) and Bitcoin payments.
-
-1. API keys: merchants create a secret API key (prefix gv_live_) and a webhook secret in the dashboard. Every API call uses
-   Authorization: Bearer <key>. GET /v1/me returns {"name": "<merchant name>"}; a bad key returns 401.
-2. POST /v1/invoices with body {reference, amount:{value:"70.00", currency:"USD"}, coins:["USDT_TRC20","BTC"],
-   preferred_coin, description, customer:{email,name}, success_url, cancel_url, webhook_url, expires_in (seconds),
-   metadata}. Honour the Idempotency-Key header (same key = same invoice). Lock the coin rate for expires_in. Return 201
-   {id, reference, status:"pending", checkout_url (https, hosted payment page), expires_at}.
-3. Hosted page at checkout_url: Gatevoo branding (black and white, the G mark with the green dot), merchant name, USD
-   amount, coin tabs, exact coin amount, a unique deposit address per invoice in the merchant's own wallet
-   (non-custodial: derive from the merchant's xpub for BTC, and a dedicated TRON address for USDT), a QR code, a countdown,
-   and live steps (Waiting, Seen on chain, Confirmed). Once paid, redirect to success_url; Cancel goes to cancel_url.
-4. Watch the chains. USDT TRC20: 20 confirmations. BTC: 2 confirmations. Status moves pending, then confirming, then paid.
-   Partial payment is underpaid; past expires_at with nothing received is expired. Record payment {coin, amount,
-   tx_hash, confirmations} and paid_usd at the locked rate.
-5. GET /v1/invoices/:id returns {id, reference, status, paid_usd, payment:{coin, amount, tx_hash, confirmations}}.
-6. Webhooks: on every status change POST {"type":"invoice.<status>","data":<invoice>} to webhook_url with header
-   X-Gatevoo-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(webhook_secret, "<t>.<raw body>")>. Retry with backoff for up
-   to 24 hours until a 2xx comes back.
-7. Errors: non-2xx with {"error":{"message":"..."}}.
-8. In the Gatevoo dashboard, list invoices per app with status, coin, amount, tx link (Tronscan / mempool.space) and
-   the merchant reference.
-
-Show me the changed files and a short test checklist when done.
-```
+**Webhook** `POST https://spyvoo.com/webhooks/gatevoo` (also answered at `/webhooks/gatevoo/gatevoo`), body
+`{ "id": "evt_…", "type": "invoice.paid", "created": "…", "data": <invoice> }`, headers `X-Gatevoo-Timestamp`
+and `X-Gatevoo-Signature` = hex HMAC-SHA256(webhook secret, `<timestamp>.<raw body>`). Spyvoo rejects signatures older
+than 5 minutes. Gatevoo retries at 30 s, 2 m, 10 m, 30 m, 2 h, 6 h and 24 h until it gets a 2xx. The webhook URL is set
+on the app in Gatevoo's dashboard (the `webhook_url` Spyvoo sends per invoice is ignored).

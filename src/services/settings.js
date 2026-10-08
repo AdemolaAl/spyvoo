@@ -48,6 +48,9 @@ const DEFAULTS = {
     { key: 'affleego', name: 'Affleego', tag: 'Deals', title: 'The best affiliate deals. One place.', text: 'Compare CPA and RevShare offers from top trading, betting and app programs, and apply in one tap.', perk: 'Free to join', url: 'https://affleego.com', color: '#F5CF3D', ink: '#141210', accent: '#141210', on: true },
     { key: 'voosquare', name: 'VooSquare', tag: 'One account', title: 'Media buying, squared.', text: 'One login for every Voo tool, one dashboard for all your numbers.', perk: 'Free with every tool', url: 'https://voosquare.com', color: '#0A1A14', ink: '#FFFFFF', accent: '#C8F75A', on: true }
   ],
+  // 24/7 support agent (Admin → Support). extra_knowledge: notes the agent must know (new feature, outage, promo...).
+  // Daily AI budgets count customer messages answered by AI; past one, the basic agent answers (still 24/7).
+  support: { on: true, ai: true, agent_name: 'Leo', agent_role: 'Spyvoo support', look: 'spy', public_chat: true, visitor_daily_ai: 400, daily_ai_free: 40, daily_ai_paid: 300, daily_ai_total: 6000, extra_knowledge: '' },
   billing: { renew_reminder_days: 3, grace_days: 2, pending_expire_days: 7 },
   flags: { maintenance: false, signups: true, public_search: true, public_search_limit: 6 }
 };

@@ -116,7 +116,7 @@ function markRead(user, id) { if (id) db.run('UPDATE notifications SET read_at =
 function advertiserAlerts() {
   const mailer = require('./mailer');
   let sent = 0;
-  const rows = db.all('SELECT f.*, u.email, u.name uname, v.name vname FROM follows f JOIN users u ON u.id = f.user_id JOIN advertisers v ON v.id = f.advertiser_id WHERE f.alert = 1 AND u.suspended = 0');
+  const rows = db.all('SELECT f.*, u.email, u.email_verified, u.name uname, v.name vname FROM follows f JOIN users u ON u.id = f.user_id JOIN advertisers v ON v.id = f.advertiser_id WHERE f.alert = 1 AND u.suspended = 0');
   for (const f of rows) {
     const since = f.last_notified_at || f.created_at;
     const fresh = db.all('SELECT a.*, v.name adv_name, v.logo_url adv_logo FROM ads a JOIN advertisers v ON v.id = a.advertiser_id WHERE a.advertiser_id = ? AND a.hidden = 0 AND a.first_seen_at > ? ORDER BY a.first_seen_at DESC', f.advertiser_id, since);
@@ -125,7 +125,7 @@ function advertiserAlerts() {
     const top = ads.card(fresh[0]);
     notify(f.user_id, { kind: 'advertiser', title: f.vname + ' launched ' + fresh.length + ' new ad' + (fresh.length > 1 ? 's' : ''), body: (top.text || top.headline).slice(0, 140), url: '/app/advertiser/' + f.advertiser_id, image: top.thumb });
     const img = top.thumb ? (/^https?:/.test(top.thumb) ? top.thumb : config.appUrl + top.thumb) : '';
-    mailer.send(f.email, 'advertiser-alert', { name: first(f.uname), advertiser: f.vname, count: String(fresh.length), count_label: fresh.length + ' new ad' + (fresh.length > 1 ? 's' : ''), ad_title: (top.text || top.headline).slice(0, 140), ad_image: img, ad_url: config.appUrl + '/app/ad/' + top.id, ads_url: config.appUrl + '/app/advertiser/' + f.advertiser_id }, { bulk: true });
+    if (f.email_verified) mailer.send(f.email, 'advertiser-alert', { name: first(f.uname), advertiser: f.vname, count: String(fresh.length), count_label: fresh.length + ' new ad' + (fresh.length > 1 ? 's' : ''), ad_title: (top.text || top.headline).slice(0, 140), ad_image: img, ad_url: config.appUrl + '/app/ad/' + top.id, ads_url: config.appUrl + '/app/advertiser/' + f.advertiser_id }, { bulk: true });
     sent++;
   }
   return { sent };
@@ -135,14 +135,14 @@ function advertiserAlerts() {
 function searchAlerts() {
   const mailer = require('./mailer');
   let sent = 0;
-  for (const s of db.all('SELECT s.*, u.email, u.name uname FROM saved_searches s JOIN users u ON u.id = s.user_id WHERE s.alert = 1 AND u.suspended = 0')) {
+  for (const s of db.all('SELECT s.*, u.email, u.email_verified, u.name uname FROM saved_searches s JOIN users u ON u.id = s.user_id WHERE s.alert = 1 AND u.suspended = 0')) {
     const q = { ...db.json(s.query, {}), since: s.last_checked_at || s.created_at };
     const n = ads.count(q);
     db.update('saved_searches', s.id, { last_checked_at: db.now() });
     if (!n) continue;
     const top = ads.search({ ...q, limit: 1, sort: 'score' }).items[0];
     notify(s.user_id, { kind: 'search', title: n + ' new ad' + (n > 1 ? 's' : '') + ' for “' + s.name + '”', body: top ? (top.text || top.headline).slice(0, 140) : '', url: '/app/discover?saved=' + s.id, image: top ? top.thumb : '' });
-    mailer.send(s.email, 'search-alert', { name: first(s.uname), search_name: s.name, count: String(n), count_label: n + ' new ad' + (n > 1 ? 's' : ''), search_url: config.appUrl + '/app/discover?saved=' + s.id, ad_title: top ? (top.text || top.headline).slice(0, 140) : '', ad_image: top && top.thumb ? (/^https?:/.test(top.thumb) ? top.thumb : config.appUrl + top.thumb) : '' }, { bulk: true });
+    if (s.email_verified) mailer.send(s.email, 'search-alert', { name: first(s.uname), search_name: s.name, count: String(n), count_label: n + ' new ad' + (n > 1 ? 's' : ''), search_url: config.appUrl + '/app/discover?saved=' + s.id, ad_title: top ? (top.text || top.headline).slice(0, 140) : '', ad_image: top && top.thumb ? (/^https?:/.test(top.thumb) ? top.thumb : config.appUrl + top.thumb) : '' }, { bulk: true });
     sent++;
   }
   return { sent };

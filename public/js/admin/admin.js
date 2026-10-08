@@ -16,6 +16,7 @@
     { href: '/admin/users', label: 'Users', icon: 'team', re: /^\/admin\/users/ },
     { href: '/admin/plans', label: 'Plans', icon: 'crown', re: /^\/admin\/plans/ },
     { href: '/admin/payments', label: 'Payments', icon: 'card', re: /^\/admin\/payments/ },
+    { href: '/admin/support', label: 'Support', icon: 'spark', re: /^\/admin\/support/, count: 'support_waiting' },
     { h: 'Grow' },
     { href: '/admin/offer', label: 'Offer & Voo family', icon: 'gift', re: /^\/admin\/offer/ },
     { href: '/admin/emails', label: 'Emails', icon: 'bell', re: /^\/admin\/emails/ },
@@ -34,7 +35,7 @@
 
   function shell(me) {
     $('#side').innerHTML = '<a class="brand" href="/admin"><span class="mark">' + SV.MARK + '</span><span class="word">Spy<b>voo</b></span><span class="adm-badge">ADMIN</span></a>' +
-      '<nav class="nav">' + A.NAV.map(function (n) { return n.h ? '<div class="nav-h">' + n.h + '</div>' : '<a href="' + n.href + '" data-nav="' + n.href + '">' + SV.G(n.icon) + '<span>' + n.label + '</span></a>'; }).join('') + '</nav>' +
+      '<nav class="nav">' + A.NAV.map(function (n) { var c = n.count && SV.state.boot && SV.state.boot.admin ? SV.state.boot.admin[n.count] : 0; return n.h ? '<div class="nav-h">' + n.h + '</div>' : '<a href="' + n.href + '" data-nav="' + n.href + '">' + SV.G(n.icon) + '<span>' + n.label + '</span>' + (c ? '<span class="count">' + c + '</span>' : '') + '</a>'; }).join('') + '</nav>' +
       '<div class="side-foot"><a href="/app">' + I('back') + 'Back to the dashboard</a><a href="/" target="_blank" rel="noopener">' + I('ext') + 'Open the website</a></div>';
     $('#admTabs').innerHTML = A.NAV.filter(function (n) { return !n.h; }).map(function (n) { return '<a class="chip" href="' + n.href + '" data-nav="' + n.href + '">' + n.label + '</a>'; }).join('');
     $('#top').innerHTML = '<a class="m-brand" href="/admin"><span class="mark">' + SV.MARK + '</span><span class="word">Spy<b>voo</b></span></a>' +

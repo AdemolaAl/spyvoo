@@ -798,3 +798,134 @@ svg.agent{width:100%;height:100%;display:block}
 .tour-end .card { position: relative; } .tour-end .card > .x { width: 36px; height: 36px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); display: grid; place-items: center; cursor: pointer; } .tour-end .card > .x svg { width: 16px; height: 16px; }
 @media (min-width: 821px) { .dt-grid > :first-child { position: sticky; top: 8px; } }
 @media (max-width: 920px) { .hero-art { margin-bottom: 0; } .hero-art .fc2 { top: 78px; } }
+
+/* ---------- Home, Oct 2026: blue hero, search box, one-row examples, labelled tour on phone ---------- */
+.hero { background: linear-gradient(125deg, #1F5BFF 0%, #2F55FF 45%, #3E4BF5 75%, #5B4BEF 100%); background-size: 180% 180%; }
+.hero .b1 { background: #6FB2FF; opacity: .5; }
+.hero .b2 { background: #14C894; opacity: .3; }
+.hero .b3 { background: #A8C6FF; opacity: .35; }
+.hero h1 .hl { background: linear-gradient(90deg, #FFE08A, #FFFFFF); -webkit-background-clip: text; background-clip: text; color: transparent; }
+:root[data-theme="dark"] .hero { background-image: linear-gradient(125deg, #12298F 0%, #1A2E9E 50%, #2A2A8F 100%); }
+.home-search { display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 16px; padding: 6px 6px 6px 14px; margin: 0 0 14px; max-width: 520px; box-shadow: 0 18px 40px -20px rgba(7, 20, 90, .7); }
+.home-search svg { width: 18px; height: 18px; color: #5A6787; flex: 0 0 auto; }
+.home-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: #0A1638; font-weight: 600; padding: 9px 0; }
+.home-search input::placeholder { color: #8D97B2; }
+.home-search button { border: 0; border-radius: 12px; background: #1F5BFF; color: #fff; font-weight: 800; padding: 10px 16px; transition: transform .2s; }
+.home-search button:hover { transform: translateY(-1px); }
+.tour-btn .lbl-s { display: none; }
+@media (min-width: 921px) { .home-search { display: none; } }
+@media (max-width: 920px) {
+  .tour-btn { padding: 0 12px 0 6px; } .tour-btn .lbl-s { display: inline; font-size: 13px; }
+  .hero { padding: 18px 18px 16px; gap: 6px; border-radius: 26px; }
+  .hero-art { height: 108px; margin: -4px 0 -6px; }
+  .hero-art .agent-wrap { width: 96px; height: 116px; bottom: -8px; }
+  .hero-art .float-card img { width: 70px; height: 50px; }
+  .hero-art .float-card { padding: 5px; border-radius: 13px; }
+  .hero-art .float-card b { font-size: 10px; padding: 4px 2px 0; }
+  .hero-art .fc1 { top: 4px; left: -4px; } .hero-art .fc2 { left: 38%; top: 34px; }
+  .hero h1 { font-size: 25px; margin-top: 8px !important; }
+  .hero > div > p, .hero .tour-card { display: none; }
+  .home-search { margin: 12px 0 10px; }
+  .hero .quick { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -18px; padding: 0 18px 2px; -webkit-overflow-scrolling: touch; }
+  .hero .quick::-webkit-scrollbar { display: none; }
+  .hero .quick button { white-space: nowrap; flex: 0 0 auto; }
+}
+
+/* ---------- Member badge: agent ID (paid plans) ----------
+   Each plan is a clearance level: Starter = steel (1), Pro = electric blue (2), Agency / Owner = obsidian + gold (3). */
+.t-pro, .t-starter { --t-bg: #0A1638; --t-ink: #EEF2FF; --t-acc: #39D5FF; --t-off: rgba(255, 255, 255, .18); }
+.t-starter { --t-bg: #2B3A57; --t-acc: #B9C7E2; }
+.t-agency, .t-owner { --t-bg: #05070F; --t-ink: #F3E7C6; --t-acc: #E8B64A; --t-off: rgba(232, 182, 74, .2); }
+.tier-pill .eyes, .plan-chip.agent .eyes { width: 18px; height: 18px; color: var(--t-acc); display: inline-grid; flex: 0 0 auto; }
+.tier-pill .eyes svg, .plan-chip.agent .eyes svg, .ac-mark svg { width: 100%; height: 100%; }
+.tier-pill .pupil, .plan-chip.agent .pupil, .ac-mark .pupil { fill: var(--t-bg); transform-box: fill-box; transform-origin: center; animation: agentBlink 6s infinite; }
+.pips { display: inline-flex; gap: 3px; }
+.pips i { width: 10px; height: 4px; border-radius: 2px; background: var(--t-off); }
+.pips i.on { background: var(--t-acc); }
+.pips i.on:last-of-type { animation: agentPip 2.4s ease-in-out infinite; }
+
+/* Top bar pill (desktop) */
+.tier-pill { display: inline-flex; align-items: center; gap: 9px; height: 36px; padding: 0 12px 0 10px; border-radius: 10px; background: var(--t-bg); color: var(--t-ink); font: 800 12px/1 var(--body); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; position: relative; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transition: transform .2s; }
+.tier-pill:hover { transform: translateY(-1px); }
+.tier-pill::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--t-acc), transparent); opacity: .9; animation: agentScanX 3.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+.tier-pill .tp-lbl { position: relative; }
+
+/* Avatar: thin clearance ring + ID clip */
+.avatar.prem { position: relative; overflow: visible; box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--t-acc); }
+.avatar.prem.t-pro { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #1F5BFF; }
+.avatar.prem > :first-child { border-radius: inherit; overflow: hidden; }
+.avatar.prem > svg:first-child { clip-path: inset(0 round 14px); }
+.agent-clip { position: absolute; right: -10px; bottom: -6px; height: 15px; padding: 0 5px; border-radius: 4px; background: var(--t-bg); color: var(--t-acc); font: 700 8px/15px var(--mono); letter-spacing: .06em; box-shadow: 0 0 0 2px var(--card); white-space: nowrap; animation: agentClip .55s .1s cubic-bezier(.2, .9, .3, 1.3) both; pointer-events: none; }
+
+/* Account menu chip */
+.plan-chip.agent { display: inline-flex; align-items: center; gap: 7px; background: var(--t-bg); color: var(--t-ink); font-weight: 800; }
+.plan-chip.agent .eyes { width: 15px; height: 15px; }
+.plan-chip.agent .pips i { width: 8px; }
+
+/* Payment confirmed: the agent ID card */
+.agent-card { position: relative; width: 236px; height: 330px; margin: 0 auto 18px; padding: 20px 20px 16px; box-sizing: border-box; border-radius: 20px; background: var(--t-bg); color: var(--t-ink); text-align: left; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 34px 60px -28px rgba(10, 22, 56, .75), inset 0 0 0 1px rgba(255, 255, 255, .08); animation: agentCardIn .8s cubic-bezier(.2, .9, .3, 1.15) both; }
+.agent-card.t-agency, .agent-card.t-owner { box-shadow: 0 34px 60px -28px rgba(5, 7, 15, .9), inset 0 0 0 1px #3A3220; }
+.ac-slot { align-self: center; width: 48px; height: 8px; border-radius: 8px; background: var(--card); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .35); }
+.ac-holo { position: absolute; left: 0; right: 0; top: 40px; height: 5px; background: linear-gradient(100deg, var(--t-acc), #7B8CFF, #B6F0FF, #5A88FF, var(--t-acc)); background-size: 200% 100%; animation: agentHolo 5s linear infinite; opacity: .9; }
+.t-agency .ac-holo, .t-owner .ac-holo { background: linear-gradient(100deg, #E8B64A, #FFF0C2, #B98A2A, #F7D78A, #E8B64A); background-size: 200% 100%; }
+.ac-scan { position: absolute; left: 0; right: 0; top: 36px; height: 2px; background: linear-gradient(90deg, transparent, var(--t-acc), transparent); box-shadow: 0 0 14px 2px var(--t-acc); opacity: 0; animation: agentScan 3.6s .8s cubic-bezier(.4, 0, .2, 1) infinite; }
+.ac-head { display: flex; align-items: center; gap: 8px; margin-top: 26px; }
+.ac-mark { width: 26px; height: 26px; border-radius: 8px; background: #1F5BFF; color: #fff; display: grid; place-items: center; padding: 4px; box-sizing: border-box; }
+.ac-mark .pupil { fill: #0A1638; }
+.ac-head b { font: 800 14px/1 var(--display); letter-spacing: -.02em; }
+.ac-head small, .ac-who small, .ac-clear small { font: 700 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; opacity: .62; }
+.ac-head small { margin-left: auto; }
+.ac-who { display: flex; gap: 14px; align-items: center; margin-top: 26px; min-width: 0; }
+.ac-who > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ac-who b { font: 800 17px/1.1 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-photo { flex: 0 0 auto; width: 64px; height: 76px; border-radius: 12px; background: linear-gradient(160deg, #2A5BFF, #132A7A); display: grid; place-items: center; font: 800 22px/1 var(--display); color: #fff; box-shadow: inset 0 0 0 2px var(--t-acc); }
+.ac-foot { margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+.ac-plan { font: 800 50px/.85 var(--display); letter-spacing: -.05em; text-transform: uppercase; color: #fff; white-space: nowrap; }
+.t-agency .ac-plan, .t-owner .ac-plan, .t-starter .ac-plan { font-size: 40px; }
+.t-agency .ac-plan, .t-owner .ac-plan { color: #F7D78A; }
+.ac-clear { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px dashed var(--t-off); }
+.ac-clear small { color: var(--t-acc); opacity: 1; }
+.ac-clear .pips i { width: 16px; height: 6px; border-radius: 3px; }
+.ac-code { margin-top: auto; height: 26px; border-radius: 6px; opacity: .5; background: repeating-linear-gradient(90deg, var(--t-ink) 0 2px, transparent 2px 4px, var(--t-ink) 4px 5px, transparent 5px 9px, var(--t-ink) 9px 12px, transparent 12px 14px); }
+.pay-done .agent-card { margin: 0 auto 18px; }
+
+@keyframes agentCardIn { 0% { transform: translateY(40px) rotate(-4deg) scale(.9); opacity: 0 } 100% { transform: none; opacity: 1 } }
+@keyframes agentScan { 0% { transform: translateY(0); opacity: 0 } 10%, 85% { opacity: .9 } 100% { transform: translateY(280px); opacity: 0 } }
+@keyframes agentScanX { 0%, 55% { transform: translateX(-100%) } 85%, 100% { transform: translateX(100%) } }
+@keyframes agentHolo { to { background-position: 200% 50% } }
+@keyframes agentPip { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+@keyframes agentBlink { 0%, 93%, 100% { transform: scaleY(1) } 96% { transform: scaleY(.1) } }
+@keyframes agentClip { 0% { transform: translateY(6px) scale(.6); opacity: 0 } 100% { transform: none; opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .agent-card, .ac-scan, .ac-holo, .tier-pill::after, .pips i, .agent-clip, .tier-pill .pupil, .plan-chip.agent .pupil, .ac-mark .pupil { animation: none !important; } }
+@media (max-width: 920px) { .tier-pill { display: none; } }
+
+/* ---------- QA polish, Oct 2026 ---------- */
+/* Account / plan: long emails and names wrap instead of pushing the page sideways on phones */
+.acct-id { display: flex; gap: 16px; align-items: center; min-width: 0; max-width: 100%; }
+.acct-head > div { min-width: 0; max-width: 100%; }
+.acct-who { min-width: 0; flex: 1; }
+.acct-who h1 { overflow-wrap: anywhere; }
+.acct-mail { overflow-wrap: anywhere; word-break: break-word; }
+.li .grow { min-width: 0; }
+.li .grow b, .li .grow small { overflow-wrap: anywhere; }
+@media (max-width: 520px) { .acct-id .avatar { width: 56px !important; height: 56px !important; border-radius: 18px !important; flex: 0 0 auto; } .acct-who h1 { font-size: 26px; } }
+
+/* Payment confirmed: card is its own centred block above the eyebrow */
+.pay-done { text-align: center; display: flex; flex-direction: column; align-items: center; }
+.pay-done .md-art { margin-bottom: 6px; }
+.pay-done .eyebrow { display: block; }
+
+/* Dark mode AI breakdown: wide cards turn translucent, so their labels can't stay brand blue */
+:root[data-theme="dark"] .ai-out .wide b { color: #BFD0FF !important; }
+:root[data-theme="dark"] .ai-out .wide { color: #fff; }
+
+/* "Make it mine" hook already carries its own quotes */
+.script q.noq { quotes: none; }
+
+/* Home tour card: the play button sits over the mini dashboard and stays visible */
+.tour-card .thumb .play { width: 30px; height: 30px; z-index: 2; background: var(--blue); color: #fff; opacity: 1; }
+.tour-card .thumb .play svg { width: 13px; height: 13px; color: #fff; fill: currentColor; margin-left: 2px; display: block; }
+.tour-card:hover .thumb .play { transform: scale(1.08); }
+
+/* Discount code: normal-case placeholder, typed code stays uppercase */
+#cpn::placeholder { text-transform: none; }

@@ -79,3 +79,23 @@ h1, h2, h3 { font-family: var(--display); letter-spacing: -.03em; line-height: 1
 .pg-top nav a { text-decoration: none; color: var(--ink-2); font-weight: 700; padding: 10px 12px; border-radius: 999px; }
 .pg-top nav a:hover { background: #E8EFFF; }
 @media (max-width: 760px) { .pg-top nav { display: none; } .pg-top .btn.ghost { display: none; } }
+/* pricing comparison on phones: sticky feature column, sideways scroll with a fade and a swipe hint */
+.cmp-box { position: relative; margin-top: 30px; }
+.cmp-box .cmp-t { margin-top: 0; }
+.cmp-hint { display: none; }
+@media (max-width: 760px) {
+  .cmp-hint { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 4px 8px; font: 800 12.5px/1 var(--body); color: var(--blue); transition: opacity .3s; }
+  .cmp-hint span { display: inline-block; animation: nudge 1.4s ease-in-out infinite; }
+  .cmp-box.moved .cmp-hint { opacity: 0; }
+  .cmp-wrap { border-radius: 22px; border: 1px solid var(--line); background: #fff; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .cmp-wrap::-webkit-scrollbar { display: none; }
+  .cmp-t { border: 0; border-radius: 0; overflow: visible; border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+  .cmp-t th, .cmp-t td { padding: 12px 14px; font-size: 14px; }
+  .cmp-t th:first-child, .cmp-t td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; white-space: normal; width: 136px; min-width: 136px; max-width: 136px; font-size: 13.5px; line-height: 1.3; box-shadow: 6px 0 12px -10px rgba(10, 22, 56, .45); }
+  .cmp-t thead th:first-child { background: #F7F9FF; }
+  .cmp-t th:not(:first-child), .cmp-t td:not(:first-child) { min-width: 96px; }
+  .cmp-t td .muted { display: block; font-size: 12px; line-height: 1.2; }
+  .cmp-box::after { content: ""; position: absolute; right: 1px; bottom: 1px; top: 22px; width: 44px; border-radius: 0 21px 21px 0; background: linear-gradient(90deg, rgba(255, 255, 255, 0), #fff 85%); pointer-events: none; opacity: 0; transition: opacity .25s; }
+  .cmp-box.more::after { opacity: 1; }
+}
+@keyframes nudge { 50% { transform: translateX(4px) } }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Spyvoo · Spy on winning Facebook and Instagram ads</title>
-<meta name="description" content="Search live Facebook and Instagram ads from every country. See which ones have run for months, why they work, and launch your own angle. Free plan, no card.">
+<meta name="description" content="Find the Facebook and Instagram ads that have been running for months in any country, see why they work, and launch your own angle instead of testing blind. Free plan, no card.">
 <meta name="theme-color" content="#1F5BFF">
 <link rel="canonical" href="{{APP_URL}}/">
 <meta property="og:type" content="website"><meta property="og:site_name" content="Spyvoo">
@@ -793,6 +793,10 @@ footer .giant .v{background:var(--grad-loop);background-size:200% auto;-webkit-b
 .tr.locked strong,.tr.locked p{filter:blur(4px);user-select:none}
 .try-lock{position:absolute;left:26px;right:26px;bottom:26px;top:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:30px;border-radius:24px;background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.92) 35%)}
 .try-lock b{font:800 24px/1.1 var(--display)}
+/* QA Oct 2026: the sign-up card sits as its own row under the results, never printed over thumbnails and score badges */
+.try-results .try-lock{position:relative;left:auto;right:auto;bottom:auto;z-index:1;grid-column:1/-1;padding:22px 18px;background:linear-gradient(135deg,#F4F7FF,#EEF2FF);border:1px solid var(--line)}
+@media (max-width:640px){.try-lock b{font-size:20px}}
+@media (max-width:600px){.sparkles{display:none}}
 .try-empty{grid-column:1/-1;text-align:center;color:var(--mut);font-weight:700;padding:20px}
 @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}}
 
@@ -930,10 +934,10 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
     <div>
       <span class="live-pill"><span class="dot"><i></i></span><span id="livePill">Live ads from every country</span></span>
       <h1 id="h1"><span class="ln">Spy the winners.</span><br><span class="l2 ln">Scale your own.<svg class="swoosh" viewBox="0 0 400 20" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="sw" x1="0" x2="1"><stop offset="0" stop-color="#1F5BFF"/><stop offset=".45" stop-color="#7B5CFF"/><stop offset=".75" stop-color="#FF3D8B"/><stop offset="1" stop-color="#FF9F1C"/></linearGradient></defs><path d="M4 14 C 120 2, 260 2, 396 12"/></svg></span></h1>
-      <p class="lead">Search live Facebook and Instagram ads from every country. See which ones have run for months, why they work, and launch your own angle before your budget burns.</p>
+      <p class="lead">See which Facebook and Instagram ads have been running for months, in any country. Learn why they work in one tap, then launch your own angle instead of burning budget testing blind.</p>
       <div class="cta-row">
-        <a class="btn btn-blue btn-glow" href="#start" data-auth="up">Find a winner in 30 seconds <span class="arr"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
-        <a class="btn btn-ghost" href="#winners"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>See live ads</a>
+        <a class="btn btn-blue btn-glow" href="#start" data-auth="up">Find my first winner, free <span class="arr"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+        <a class="btn btn-ghost" href="#winners"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>See example winners</a>
       </div>
       <div class="proof">
         <div><div class="n tnum">150+</div><div class="k">countries on Meta</div></div>
@@ -947,9 +951,9 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
 
     <div class="stage" id="stage" aria-label="A chat between two media buyers about Spyvoo">
       <div class="stage-bg" aria-hidden="true"></div>
-      <div class="orb o1" aria-hidden="true"><img src="/img/ads/0.webp" alt=""><span style="--c:#FF3D8B">ROAS 4.2x</span></div>
+      <div class="orb o1" aria-hidden="true"><img src="/img/ads/0.webp" alt=""><span style="--c:#FF3D8B">Score 94</span></div>
       <div class="orb o2" aria-hidden="true"><img src="/img/ads/9.webp" alt=""><span style="--c:#FF9F1C">88 days live</span></div>
-      <div class="orb o3" aria-hidden="true"><img src="/img/ads/3.webp" alt=""><span style="--c:#14B88A">+212% sales</span></div>
+      <div class="orb o3" aria-hidden="true"><img src="/img/ads/3.webp" alt=""><span style="--c:#14B88A">9 variations</span></div>
       <div class="float face-big" id="bigT" aria-hidden="true"><span class="tag">Rafael · media buyer</span></div>
       <div class="float face-big face-yas" id="bigA" aria-hidden="true"><span class="tag">Yasmin</span></div>
       <div class="float chip chip-cpm" id="chipCpm" aria-hidden="true"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M3 7l6 6 4-4 8 8"/><path d="M14 17h7v-7"/></svg></span><span>CPM +38%<small>Ad fatigue, day 2</small></span></div>
@@ -981,7 +985,7 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
         <span class="eyebrow">Live winners</span>
         <h2 id="h-win" style="margin-top:12px">This is the link <span class="g">Yasmin sent.</span></h2>
       </div>
-      <p>Every card is a real ad shape: how long it has run, where it runs, its call to action and a winner score from 0 to 100. Hover to play.</p>
+      <p>Each card shows what you see inside Spyvoo: how long the ad has run, where it runs, its call to action and a winner score from 0 to 100. Tap or hover to play.</p>
     </div>
     <div class="filters" role="group" aria-label="Filter by niche" id="filters">
       <button type="button" data-f="all" aria-pressed="true">All niches</button>
@@ -993,7 +997,7 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
   </div>
   <div class="wall-glow" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="lanes" id="lanes"></div>
-  <div class="wrap"><div class="wall-note"><span>Sample creatives. Inside Spyvoo this wall fills with real ads from Meta’s Ad Library every few hours.</span></div></div>
+  <div class="wrap"><div class="wall-note"><span>These are sample creatives. Inside Spyvoo you see real ads from Meta’s Ad Library, refreshed every few hours.</span></div></div>
 </section>
 
 <section class="demo-sec" id="demo" aria-labelledby="h-demo">
@@ -1037,7 +1041,7 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
   <div class="wrap">
     <div class="sec-head">
       <div><span class="eyebrow">Before and after</span><h2 id="h-cmp" style="margin-top:12px">Stop digging through the Ad Library.</h2></div>
-      <p>Meta’s library shows ads. Spyvoo shows you which ones make money, keeps them forever, and tells you why they work. Drag the handle.</p>
+      <p>Meta’s library shows you ads. Spyvoo shows you which ones are most likely making money, keeps them forever, and explains why they work. Drag the handle.</p>
     </div>
     <div class="cmp" id="cmp">
       <div class="cmp-pane before">
@@ -1065,7 +1069,7 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
   <div class="wrap">
     <div class="sec-head">
       <div><span class="eyebrow">How it works</span><h2 id="h-how" style="margin-top:12px">From burnt budget to a proven angle.</h2></div>
-      <p>Three moves. A beginner finds a winning ad on day one; a pro gets the filters they always wanted.</p>
+      <p>Three steps. Beginners find a proven ad on day one. Pros get the filters they always wanted.</p>
     </div>
     <div class="steps">
       <article class="step">
@@ -1196,21 +1200,24 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
       <div class="bill" role="group" aria-label="Billing period"><button type="button" data-b="m" aria-pressed="true">Monthly</button><button type="button" data-b="y" aria-pressed="false">Yearly <em>2 months free</em></button></div>
     </div>
     <div class="plans" id="plans"></div>
-    <p class="price-note">Pay with USDT or Bitcoin through Gatevoo. Cancel anytime. Prices in USD.</p>
+    <p class="price-note">Prices in USD. Pay with USDT or Bitcoin. Nothing renews or charges you automatically. First order? <a href="/legal/refunds" style="color:inherit">7-day refund</a> if Spyvoo isn’t for you.</p>
   </div>
 </section>
 
 <section aria-labelledby="h-faq">
   <div class="wrap faq">
-    <div><span class="eyebrow">Questions</span><h2 id="h-faq" style="margin-top:12px;font-size:clamp(36px,5vw,60px)">Before you start spying.</h2><p class="mut" style="margin-top:16px;max-width:24em">Still unsure? Message us from your dashboard and a real person replies.</p></div>
+    <div><span class="eyebrow">Questions</span><h2 id="h-faq" style="margin-top:12px;font-size:clamp(36px,5vw,60px)">Before you start spying.</h2><p class="mut" style="margin-top:16px;max-width:24em">Still unsure? Ask in the chat any time, or email us. A real person steps in whenever you need one.</p></div>
     <div class="qs">
-      <details open><summary>Where do the ads come from?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>From Meta's public Ad Library, the same ads anyone can see. Spyvoo collects them every few hours, saves the videos before the links expire, and scores them so you don't scroll for hours.</p></details>
+      <details open><summary>Meta’s Ad Library is free. Why pay for Spyvoo?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>The Ad Library shows ads, but not which ones work. Its videos and links expire, and ads disappear when the advertiser stops them. Spyvoo saves every video and image forever, gives each ad a winner score, explains in plain English why it works, writes your own version, and alerts you when a competitor launches something new. Hours of scrolling become a few minutes.</p></details>
+      <details><summary>Where do the ads come from?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>From Meta’s public Ad Library: the same public ads anyone can look up, collected every few hours. Spyvoo never shows private data like a competitor’s budget, targeting or results.</p></details>
+      <details><summary>How do I know an ad is a winner?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Nobody keeps paying for an ad that loses money. The winner score (0 to 100) looks at how many days an ad has run, how many versions the advertiser made, how many countries it runs in, and whether it’s still live. An ad still running after 30, 60 or 90 days is very likely profitable. We never invent spend or ROAS numbers, because Meta doesn’t publish them.</p></details>
       <details><summary>Which countries can I search?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Every country where Meta runs ads, from Brazil and Mexico to Egypt, the Gulf, India and Southeast Asia. Search one market or compare fifty at once.</p></details>
-      <details><summary>Will the ads expire like in Meta’s Ad Library?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>No. Meta’s links and videos expire within days. Spyvoo saves every video and image when it finds the ad, so it stays in your boards forever, even after the advertiser deletes it.</p></details>
       <details><summary>Is there a free plan?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Yes, forever. 10 searches a day, 20 saved ads and 5 AI breakdowns a month. No card needed. Upgrade only when you want more.</p></details>
-      <details><summary>Can I download the videos?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Yes, on Starter and up. Use them to study the hook and pacing. Make your own version; copying someone's ad word for word is on you.</p></details>
-      <details><summary>What does “days running” tell me?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Nobody keeps paying for an ad that loses money. An ad still running after 30, 60 or 90 days is almost always profitable for the advertiser.</p></details>
-      <details><summary>How do I pay?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>With USDT or Bitcoin through Gatevoo. More local payment methods are coming, shown by the country you pick when you sign up.</p></details>
+      <details><summary>Which plan should I pick?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Start on Free and find your first winner. Pick Starter if you run a few offers on your own. Pick Pro if you buy ads full time and launch new creatives every week: unlimited searches and saves, plus far more AI breakdowns, downloads and scripts. Pick Agency if a team of up to 3 people shares boards and limits.</p></details>
+      <details><summary>Can I download the videos?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Yes, on Starter and up. Use them to study the hook, pacing and offer, then make your own version. Re-uploading someone else’s ad as your own breaks our rules and Meta’s.</p></details>
+      <details><summary>How do I pay? I’ve never paid with crypto.<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>With USDT (on the TRON network) or Bitcoin, through Gatevoo, our own checkout. You see the exact amount and address, send it from your wallet or exchange, and your plan switches on by itself as soon as the payment confirms. Some countries also see local options like bank transfer. Stuck? The chat checks your payment for you.</p></details>
+      <details><summary>Will I be charged automatically? How do I cancel?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Nothing charges you automatically, so there’s nothing to cancel. We email you a few days before your plan ends. Renew if you want to keep going; if not, you move to Free and your boards and saved ads stay.</p></details>
+      <details><summary>Can I get a refund?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary><p>Yes, on your first paid order. If Spyvoo isn’t for you, ask within 7 days and we refund it, as long as you’ve used less than 20% of the plan’s AI breakdowns or downloads. Double payments are always refunded. See the <a href="/legal/refunds" style="color:inherit">refund policy</a>.</p></details>
     </div>
   </div>
 </section>
@@ -1220,7 +1227,7 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
     <div class="final-card">
       <div class="fc-float" aria-hidden="true"><img class="f1" src="/img/ads/5.webp" alt=""><img class="f2" src="/img/ads/7.webp" alt=""><img class="f3" src="/img/ads/0.webp" alt=""><img class="f4" src="/img/ads/9.webp" alt=""></div>
       <h2 id="h-final">Stop guessing.<br>Start spying.</h2>
-      <p>Free plan, no card. Find your first winning ad before your coffee gets cold.</p>
+      <p>Free plan, no card. Your first winning ad is one search away.</p>
       <form class="signup" id="signup" novalidate>
         <label for="email" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Email address</label>
         <input id="email" type="email" placeholder="you@yourbrand.com" autocomplete="email">
@@ -1500,10 +1507,10 @@ footer .fam a{display:inline-flex;align-items:center;gap:8px}footer .fam img{bor
 
   /* ---------- pricing ---------- */
   var PLANS = [
-    { n: 'Free', m: 0, who: 'Try it and find your first winner.', f: ['10 searches a day', '20 saved ads', '5 AI breakdowns a month', 'Facebook + Instagram'], cta: 'Start free' },
-    { n: 'Starter', m: 29, who: 'Solo media buyers and affiliates.', f: ['100 searches a day', '500 saved ads', '100 AI breakdowns a month', '50 video downloads a month'], cta: 'Choose Starter' },
-    { n: 'Pro', m: 79, pop: 1, who: 'Full-time buyers scaling every week.', f: ['Unlimited searches and saves', '1,000 AI breakdowns a month', '500 video downloads a month', '“Make it mine” scripts', 'Advertiser alerts'], cta: 'Choose Pro' },
-    { n: 'Agency', m: 199, who: 'Teams running many accounts.', f: ['Unlimited searches, saves and downloads', '5,000 AI breakdowns a month', '3 team seats', 'Shared boards'], cta: 'Choose Agency' }
+    { n: 'Free', m: 0, who: 'Try Spyvoo and find your first winner.', f: ['10 searches a day', '20 saved ads', '5 AI breakdowns a month', 'Facebook + Instagram'], cta: 'Start free' },
+    { n: 'Starter', m: 29, who: 'For solo buyers and affiliates running a few offers.', f: ['100 searches a day', '500 saved ads', '100 AI breakdowns a month', '50 video downloads a month'], cta: 'Choose Starter' },
+    { n: 'Pro', m: 79, pop: 1, who: 'For full-time buyers launching new creatives every week.', f: ['Unlimited searches and saves', '1,000 AI breakdowns a month', '500 video downloads a month', '“Make it mine” scripts', 'Advertiser and search alerts'], cta: 'Choose Pro' },
+    { n: 'Agency', m: 199, who: 'For agencies and teams running many ad accounts.', f: ['Unlimited searches, saves and downloads', '5,000 AI breakdowns a month', '3 team seats', 'Shared boards'], cta: 'Choose Agency' }
   ];
   var yearly = false, CHECK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
   function drawPlans() {

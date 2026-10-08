@@ -27,6 +27,13 @@ function view(name) {
 }
 // VooSquare support widget on every page but the admin (with the member's email and name when logged in).
 function withWidget(body, user) {
+  // Spyvoo's own 24/7 support agent takes the corner when it is on (Admin → Support); one chat bubble, never two.
+  const support = require('../services/support');
+  if (support.enabled()) {
+    const isApp = body.includes('id="tabbar"');
+    if (isApp || support.agentInfo().public_chat) return body.replace('</body>', '<script src="/js/support-chat.js" defer></script>\n</body>');
+    return body;
+  }
   const w = voo.widget();
   if (!w) return body;
   const who = user ? ' data-email="' + esc(user.email) + '" data-name="' + esc(user.name || '') + '"' : '';
@@ -73,6 +80,18 @@ module.exports = function (app) {
   app.get('/admin/*', adminShell);
 
   // Shared board (read-only link).
+  // One-click unsubscribe from marketing mail (weekly report, offers, news). The link in every bulk email is signed for
+  // that address. Opening it shows a button (mail scanners open links); Gmail's one-click POST switches it off directly.
+  const unsubscribe = (req, res, doIt) => {
+    const email = require('../services/mailer').readUnsubscribe(req.params.token);
+    if (!email) return html(res, notice('Link not valid', 'This unsubscribe link isn’t valid', 'Turn emails off from Account in your dashboard instead.'), 400);
+    if (!doIt && db.one('SELECT marketing_opt_out FROM users WHERE email = ?', email)?.marketing_opt_out) return html(res, notice('Unsubscribed', 'You’re already unsubscribed', 'No weekly reports, offers or news go to this address. Turn them back on any time in Account.'));
+    if (doIt) { db.run('UPDATE users SET marketing_opt_out = 1 WHERE email = ?', email); return html(res, notice('Unsubscribed', 'You’re unsubscribed', 'No more weekly reports, offers or news. Receipts, alerts you set up and security emails still arrive. Change it any time in Account.')); }
+    html(res, page('Unsubscribe', '<div class="pg-card center"><h1>Stop marketing emails?</h1><p>No more weekly reports, offers or news to ' + esc(email) + '. Receipts and alerts you set up still arrive.</p><form method="post"><button class="btn" type="submit">Unsubscribe</button></form><a class="btn ghost" href="/app/account">Keep them</a></div>'));
+  };
+  app.get('/unsubscribe/:token', (req, res) => unsubscribe(req, res, false));
+  app.post('/unsubscribe/:token', (req, res) => unsubscribe(req, res, true));
+
   app.get('/b/:token', (req, res) => {
     const b = library.sharedBoard(req.params.token);
     if (!b) return html(res, notice('Board not found', 'This board isn’t shared anymore', 'Ask the owner for a new link.'), 404);
@@ -108,7 +127,7 @@ module.exports = function (app) {
     const o = demoOrder(req);
     if (!o) return html(res, notice('Not found', 'Checkout not found', 'This test checkout link is invalid.'), 404);
     if (o.status === 'paid') return res.redirect('/app/plan?order=' + encodeURIComponent(o.ref));
-    html(res, page('Test checkout', '<div class="pg-card center"><span class="tag">Test checkout</span><h1>$' + o.amount_usd.toFixed(2) + '</h1><p>' + esc((require('../services/account').plan(o.plan_id) || {}).name || o.plan_id) + ' plan, ' + o.interval + 'ly. No money moves: this page only exists while PAYMENTS_DEMO is on.</p><form method="post"><button class="btn" type="submit">Pay (test)</button></form><a class="btn ghost" href="/app/plan">Cancel</a></div>'));
+    html(res, page('Test checkout', '<div class="pg-card center"><span class="tag">Test checkout</span><h1>$' + o.amount_usd.toFixed(2) + '</h1><p>' + esc((require('../services/account').plan(o.plan_id) || {}).name || o.plan_id) + ' plan, ' + o.interval + 'ly. No money moves: this is a practice checkout for testing.</p><form method="post"><button class="btn" type="submit">Pay (test)</button></form><a class="btn ghost" href="/app/plan">Cancel</a></div>'));
   });
   app.post('/pay/demo/:ref', (req, res) => {
     const o = demoOrder(req);

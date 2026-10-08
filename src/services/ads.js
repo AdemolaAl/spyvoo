@@ -256,7 +256,15 @@ function detail(id) {
     advertiser: { ...card(a).advertiser, page_url: httpUrl((db.one('SELECT page_url FROM advertisers WHERE id = ?', a.advertiser_id) || {}).page_url) }
   };
 }
-function analysisOut(an) { return { hook: an.hook, angle: an.angle, offer: an.offer, audience: an.audience, triggers: db.json(an.triggers, []), format: an.format, transcript: an.transcript, why: an.why, how_to_adapt: an.how_to_adapt, model: an.model, created_at: an.created_at }; }
+// The v2 breakdown fields live in ad_analysis.extra (JSON). They are returned both as `extra` and flat on the breakdown.
+const ANALYSIS_EXTRA = ['hook_type', 'awareness_stage', 'sophistication', 'persona', 'funnel', 'offer_mechanics', 'pacing', 'compliance_risk', 'scores', 'test_ideas'];
+function analysisOut(an) {
+  let extra = db.json(an.extra, {});
+  if (!extra || typeof extra !== 'object' || Array.isArray(extra)) extra = {};
+  const flat = {};
+  for (const k of ANALYSIS_EXTRA) if (extra[k] !== undefined && extra[k] !== null) flat[k] = extra[k];
+  return { hook: an.hook, angle: an.angle, offer: an.offer, audience: an.audience, triggers: db.json(an.triggers, []), format: an.format, transcript: an.transcript, why: an.why, how_to_adapt: an.how_to_adapt, model: an.model, created_at: an.created_at, ...flat, extra: flat };
+}
 
 function advertiser(id) {
   const v = db.one('SELECT * FROM advertisers WHERE id = ?', Number(id));

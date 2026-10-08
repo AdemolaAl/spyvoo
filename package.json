@@ -4,7 +4,9 @@
   "private": true,
   "description": "Spyvoo by Zedapex: spy on winning Facebook and Instagram ads. Website, dashboard, admin panel, data pipeline and API in one zero-dependency Node.js app.",
   "main": "src/server.js",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning src/server.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
@@ -12,7 +14,9 @@
     "create-admin": "node --disable-warning=ExperimentalWarning scripts/create-admin.js",
     "check": "node --disable-warning=ExperimentalWarning scripts/check.js",
     "backup": "node --disable-warning=ExperimentalWarning scripts/backup.js",
-    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/*.test.js"
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/*.test.js",
+    "e2e:gatevoo": "node scripts/e2e-gatevoo.js . ../gatevoo-main",
+    "tour-voice": "node scripts/tour-voice.js"
   },
   "license": "UNLICENSED",
   "author": "Zedapex Limited"

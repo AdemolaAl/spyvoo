@@ -161,3 +161,5 @@ module.exports = function (app) {
 
 module.exports.makeToken = makeToken;
 module.exports.useToken = useToken;
+// The support agent resends confirmation emails with the same link and template.
+module.exports.sendVerify = sendVerify;

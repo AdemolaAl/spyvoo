@@ -21,7 +21,7 @@
     SV.get('/api/app/plan').then(function (d) {
       var cur = d.current;
       function draw() {
-        view.innerHTML = '<div class="fade-in"><div class="page-head"><div><span class="eyebrow">Plan & billing</span><h1>' + (cur.id === 'free' ? 'Unlock the full radar' : 'You’re on ' + esc(cur.name)) + '</h1><p>' + (cur.id === 'free' ? 'Upgrade any time. Pay with USDT or Bitcoin. No card needed.' : 'Renews ' + SV.date(cur.renews_at) + '. Crypto plans don’t renew by themselves: we remind you before.') + '</p></div>' +
+        view.innerHTML = '<div class="fade-in"><div class="page-head"><div><span class="eyebrow">Plan & billing</span><h1>' + (cur.id === 'free' ? 'Find more winners, faster' : 'You’re on ' + esc(cur.name)) + '</h1><p>' + (cur.id === 'free' ? 'Upgrade when you’re ready. Pay with USDT or Bitcoin. Nothing renews or charges you automatically.' : 'Active until ' + SV.date(cur.renews_at) + '. Nothing charges you automatically: we email you a few days before so you can renew.') + '</p></div>' +
           '<div class="seg" id="iv"><button type="button" data-y="0" class="' + (yearly ? '' : 'on') + '">Monthly</button><button type="button" data-y="1" class="' + (yearly ? 'on' : '') + '">Yearly <span style="color:var(--mint)">2 months free</span></button></div></div>' +
           (cur.team_owner ? '<div class="announce" style="margin:0 0 16px">' + I('team', ' width="18" height="18"') + 'Your plan comes from ' + esc(cur.team_owner.name || cur.team_owner.email) + '’s Agency team.</div>' : '') +
           '<div id="offerSlot"></div>' +
@@ -56,24 +56,37 @@
       }
       draw();
       var ref = q.get('order');
-      if (ref) poll(ref);
+      if (ref) poll(ref, 0, { prev: SV.state.boot && SV.state.boot.user && SV.state.boot.user.plan, orders: d.orders });
       if (q.get('checkout')) checkout(d, q.get('checkout'), q.get('interval') === 'year' ? 'year' : 'month', coupon);
     }).catch(SV.fail);
   });
 
-  function poll(ref, n) {
+  // Was this payment a renewal of the plan the user already had? (then "extended", not "welcome")
+  function isRenewal(ctx, ref, plan, orderPlan) {
+    var prev = ctx && ctx.prev;
+    if (!prev || prev.owner || !prev.paid || prev.id !== plan.id) return false;
+    if (prev.renews_at && prev.renews_at !== plan.renews_at) return true;
+    // The plan may already have switched on before this page loaded: look for an earlier paid order for the same plan.
+    return (ctx.orders || []).some(function (o) { return o.ref !== ref && o.status === 'paid' && o.plan === orderPlan; });
+  }
+
+  function poll(ref, n, ctx) {
     n = n || 0;
     SV.get('/api/app/orders/' + encodeURIComponent(ref)).then(function (r) {
       if (!r.order) return;
       if (r.order.status === 'paid') {
         history.replaceState({}, '', '/app/plan');
         SV.state.boot.user = r.user;
-        SV.modal('<div style="text-align:center"><div class="md-art">' + SV.agent(SV.cast.host, { pose: 'cheer' }) + '</div><span class="eyebrow" style="color:var(--mint)">Payment confirmed</span><h2 style="margin-top:8px">Welcome to ' + esc(r.user.plan.name) + '!</h2><p class="mut" style="font-weight:600">Your plan is active until ' + SV.date(r.user.plan.renews_at) + '. A receipt is in your inbox.</p><div class="actions" style="justify-content:center"><a class="btn grad" href="/app/discover">' + I('search') + 'Start spying</a></div></div>', { onClose: function () { SV.render(); } });
+        var pl = r.user.plan, name = pl.owner ? (r.order.plan || pl.name) : pl.name;
+        var renew = isRenewal(ctx, ref, pl, r.order.plan);
+        SV.modal('<div class="pay-done">' + (SV.tier && SV.tier(r.user) ? SV.agentCard(r.user, SV.tier(r.user), ref) : '<div class="md-art">' + SV.agent(SV.cast.host, { pose: 'cheer' }) + '</div>') + '<span class="eyebrow" style="color:var(--mint)">Payment confirmed</span><h2 style="margin-top:8px">' + (renew ? 'Your ' + esc(name) + ' plan is extended' : 'Welcome to ' + esc(name) + '!') + '</h2><p class="mut" style="font-weight:600">' + (pl.renews_at ? 'Your plan is active until ' + SV.date(pl.renews_at) + '. ' : '') + 'A receipt is in your inbox.</p><div class="actions" style="justify-content:center"><a class="btn grad" href="/app/discover">' + I('search') + 'Start spying</a></div></div>', { onClose: function () { SV.render(); } });
         SV.confetti(null, null, 220);
+        // Redraw the shell now so the sidebar upgrade box goes and the member badge shows without a reload.
+        if (typeof SV.shell === 'function') { try { SV.shell(); } catch (e) { /* the modal is what matters */ } }
         SV.boot(true);
       } else if (r.order.status === 'pending' && n < 40) {
         if (n === 0) SV.toast('Waiting for your payment to confirm…', { icon: 'clock', ms: 4000 });
-        setTimeout(function () { poll(ref, n + 1); }, 6000);
+        setTimeout(function () { poll(ref, n + 1, ctx); }, 6000);
       } else if (r.order.status === 'failed') SV.toast('That payment didn’t go through. Try again.', { bad: true });
     }).catch(function () {});
   }
@@ -89,7 +102,7 @@
       }).join('') + '</div><div id="coinBox"></div></div>' : '<p class="mut">No payment method is available for your country yet. Contact support.</p>') +
       '<div class="field" style="margin-top:12px"><label>Discount code</label><div style="display:flex;gap:8px"><input class="input" id="cpn" placeholder="e.g. SPYLAUNCH" value="' + esc(coupon || '') + '" style="text-transform:uppercase"><button class="btn ghost" type="button" id="cpnGo">Apply</button></div><small id="cpnMsg" style="font-weight:700"></small></div>' +
       '<div class="sum" id="sum"></div><p id="payErr" class="pay-err" role="alert" hidden></p><div class="actions"><button class="btn grad block" type="button" id="pay"' + (methods.length ? '' : ' disabled') + '>' + I('lock') + 'Continue to payment</button></div>' +
-      '<p class="mut" style="font-size:12px;font-weight:600;margin:10px 0 0;text-align:center">Secure checkout. Your plan switches on as soon as the payment confirms.</p>');
+      '<p class="mut" style="font-size:12px;font-weight:600;margin:10px 0 0;text-align:center">Secure checkout. Your plan switches on as soon as the payment confirms. First paid order? You can ask for a refund within 7 days.</p>');
     var el = md.el, applied = '';
     function coins() {
       var pm = el.querySelector('input[name=pm]:checked'), m = pm && methods.find(function (x) { return String(x.id) === pm.value; });
@@ -203,11 +216,11 @@
     view.innerHTML = '<div class="boot"><div class="boot-eyes"></div></div>';
     SV.get('/api/app/me').then(function (d) {
       var u = d.user;
-      view.innerHTML = '<div class="fade-in"><div class="page-head"><div style="display:flex;gap:16px;align-items:center"><span class="avatar" style="width:72px;height:72px;border-radius:22px">' + SV.avatar(u.email) + '</span><div><span class="eyebrow">Account</span><h1 style="margin-top:6px">' + esc(u.name) + '</h1><p>' + esc(u.email) + (u.email_verified ? ' · <span style="color:var(--mint)">verified</span>' : ' · <button type="button" id="resend" style="border:0;background:none;color:var(--blue);font-weight:800;padding:0">confirm your email</button>') + '</p></div></div></div>' +
+      view.innerHTML = '<div class="fade-in"><div class="page-head acct-head"><div class="acct-id"><span class="avatar" style="width:72px;height:72px;border-radius:22px">' + SV.avatar(u.email) + '</span><div class="acct-who"><span class="eyebrow">Account</span><h1 style="margin-top:6px">' + esc(u.name) + '</h1><p><span class="acct-mail" title="' + esc(u.email) + '">' + esc(u.email) + '</span>' + (u.email_verified ? ' · <span style="color:var(--mint)">verified</span>' : ' · <button type="button" id="resend" style="border:0;background:none;color:var(--blue);font-weight:800;padding:0">confirm your email</button>') + '</p></div></div></div>' +
         '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));align-items:start">' +
         '<form class="panel grid" id="prof" style="gap:12px"><h3 style="font-size:19px">Profile</h3><div class="field"><label>Name</label><input class="input" id="pn" value="' + esc(u.name) + '"></div>' +
         '<div class="field"><label>Country (decides your payment methods)</label><select class="input" id="pc">' + b.countries.map(function (c) { return '<option value="' + c.code + '"' + (c.code === u.country ? ' selected' : '') + '>' + c.flag + ' ' + esc(c.name) + '</option>'; }).join('') + '</select></div>' +
-        '<label class="li" style="padding:6px 0;border:0"><span class="grow"><b>Weekly spy report</b><small>Top angles in your niche, every Monday</small></span><button class="toggle" type="button" role="switch" id="wk" aria-checked="' + !d.marketing_opt_out + '"></button></label>' +
+        '<label class="li" style="padding:6px 0;border:0"><span class="grow"><b>Weekly report, offers & news</b><small>Top angles in your niche every Monday, plus deals and product news. Receipts and your ad alerts still arrive either way.</small></span><button class="toggle" type="button" role="switch" id="wk" aria-checked="' + !d.marketing_opt_out + '"></button></label>' +
         '<label class="li" style="padding:6px 0;border:0"><span class="grow"><b>Dark mode</b><small>Easy on the eyes at night</small></span><button class="toggle" type="button" role="switch" id="dm" aria-checked="' + (document.documentElement.getAttribute('data-theme') === 'dark') + '"></button></label>' +
         '<button class="btn" type="submit">Save changes</button></form>' +
         '<div class="grid" style="gap:18px">' +

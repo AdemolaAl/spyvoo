@@ -5,7 +5,37 @@
   'use strict';
   var SV = window.SV, esc = SV.esc, I = SV.I, $ = SV.$;
   var T = SV.tour = {};
-  var ui, cursor, spot, data, run = 0, paused = false, chapter = 0, voice = false, realApi = null;
+  var ui, cursor, spot, data, run = 0, paused = false, chapter = 0, voice = true, realApi = null;
+  // Narration: a studio voice recorded once (public/audio/tour/0-8.mp3, made by scripts/tour-voice.js). One audio
+  // element is reused so phones allow it after the first tap. If a clip is missing, the device's own voice reads it.
+  var aud = null, clipBroken = {}, primed = false, lastText = {};
+  function clip(i) { return '/audio/tour/' + i + '.mp3'; }
+  function speakFallback(text) { if (!window.speechSynthesis) return; try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(String(text).replace(/<[^>]+>/g, '')); u.rate = 1.02; speechSynthesis.speak(u); } catch (e) { /* no voice */ } }
+  function narrate(i, text) {
+    if (text) lastText[i] = text;
+    primed = false;
+    if (!voice) return;
+    if (!aud || clipBroken[i]) return speakFallback(text);
+    try {
+      if (aud.dataset.i !== String(i)) { aud.dataset.i = String(i); aud.src = clip(i); }
+      aud.onerror = function () { clipBroken[i] = true; if (aud.dataset.i === String(i)) speakFallback(text); };
+      var p = aud.play(); if (p && p.catch) p.catch(function () { /* blocked: captions still show */ });
+    } catch (e) { speakFallback(text); }
+  }
+  function hush() { if (aud) try { aud.pause(); } catch (e) { /* ignore */ } if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+  // Wait for the narrator to finish the line before moving on (so the voice is never cut off).
+  function voiceDone(my) {
+    return new Promise(function (res, rej) {
+      var end = Date.now() + 12000;
+      (function look() {
+        if (my !== run) return rej(new Abort());
+        var talking = voice && ((aud && !clipBroken[chapter] && aud.dataset.i === String(chapter) && !aud.ended && aud.currentTime > 0 && !aud.error) || (window.speechSynthesis && speechSynthesis.speaking));
+        if (!talking || Date.now() > end) return res();
+        if (paused) end += 100;
+        setTimeout(look, 100);
+      })();
+    });
+  }
   var CH = [
     { k: 'Your HQ', d: 7 }, { k: 'Ask', d: 9 }, { k: 'Filters', d: 6 }, { k: 'Winners', d: 7 },
     { k: 'The ad', d: 8 }, { k: 'AI', d: 8 }, { k: 'Save', d: 6 }, { k: 'Make it mine', d: 7 }
@@ -81,7 +111,7 @@
     var bar = SV.$$('.tour-prog i', ui)[i];
     // A keyframe animation (not a transition) so Pause can freeze it.
     if (bar) { void bar.offsetWidth; bar.style.width = ''; bar.style.animation = 'tourbar ' + CH[i].d + 's linear forwards'; bar.style.animationPlayState = paused ? 'paused' : 'running'; }
-    if (voice && window.speechSynthesis) { try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(text.replace(/<[^>]+>/g, '')); u.rate = 1.04; speechSynthesis.speak(u); } catch (e) { /* no voice */ } }
+    narrate(i, text);
   }
 
   /* ---------- the mock layer: the tour never spends usage ---------- */
@@ -101,7 +131,7 @@
   /* ---------- chapters ---------- */
   var STEPS = [
     function (my) { // HQ
-      say(0, 'Welcome, agent! This is your HQ. Every time you log in, today’s best ads are waiting here.');
+      say(0, 'Welcome, agent! This is your HQ. Every time you log in, today’s best ads are waiting for you right here.');
       return go('/app', my).then(function () { return until('.hero', my); }).then(function () { highlight('.hero'); return moveTo('.hero h1', my); })
         .then(function () { return wait(1600, my); }).then(function () { unspot(); return scrollTo('#winners', my); })
         .then(function () { highlight('#winners', 6); return moveTo('#winners .ad', my); }).then(function () { return wait(1600, my); });
@@ -114,19 +144,19 @@
         .then(function () { unspot(); return until('#results .ad', my); }).then(function () { return wait(800, my); });
     },
     function (my) { // Filters
-      say(2, 'Spyvoo turns your words into filters: country, how long the ad has run, the button and more. Tap any chip to change them.');
+      say(2, 'Spyvoo turns your words into filters: the country, how long the ad has run, the button, and more. Tap any chip to change them.');
       return (document.querySelector('#filters .chip') ? Promise.resolve() : go('/app/discover?' + new URLSearchParams(flat(data.filters)).toString(), my).then(function () { return until('#filters .chip', my); }))
         .then(function () { highlight('#understood', 6); return moveTo('#understood', my); }).then(function () { return wait(1400, my); })
         .then(function () { highlight('#filters', 6); return moveTo('#filters .chip:nth-child(2)', my); }).then(function () { return wait(1600, my); });
     },
     function (my) { // Winners
-      say(3, 'Look at the pink “days” badge. An ad still running after 30 days is almost always making money. The ring is its winner score.');
+      say(3, 'Look at the days badge. An ad still running after 30 days is almost always making money. The ring is its winner score.');
       unspot();
       return until('#results .ad', my).then(function () { return scrollTo('#results', my); }).then(function () { highlight('#results .ad .days', 6); return moveTo('#results .ad .days', my); })
         .then(function () { return wait(1300, my); }).then(function () { highlight('#results .ad .score', 6); return moveTo('#results .ad .score', my); }).then(function () { return wait(1300, my); });
     },
     function (my) { // The ad
-      say(4, 'Open any ad to see everything: the creative, how many days it ran, variations, countries, and the full text.');
+      say(4, 'Open any ad to see everything: the creative, how many days it ran, the variations, the countries, and the full text.');
       unspot();
       if (!data.ad) return wait(1000, my);
       var already = document.querySelector('#layer .drawer');
@@ -135,7 +165,7 @@
         .then(function () { highlight('#layer .timeline', 6); return wait(1200, my); });
     },
     function (my) { // AI
-      say(5, 'Then let the AI explain it: the hook, the offer, who it targets, and in plain words why it works.');
+      say(5, 'Then let the AI explain it: the hook, the offer, who it targets, and in plain words, why it works.');
       if (!document.querySelector('#layer .drawer') && data.ad) { SV.openAd(data.ad.ad.id, { data: data.ad, tour: true }); }
       return until('#aibox', my).then(function () { unspot(); return scrollTo('#aibox', my); }).then(function () { highlight('#aibox', 4); return moveTo('#aibox h3', my); })
         .then(function () { return wait(2400, my); });
@@ -148,7 +178,7 @@
         .then(function () { highlight('#dfollow', 6); return moveTo('#dfollow', my); }).then(function () { var b = $('#dfollow'); if (b) { b.className = 'btn sm ghost'; b.innerHTML = I('check') + 'Following'; } return wait(1400, my); });
     },
     function (my) { // Make it mine
-      say(7, 'Last trick: “Make it mine”. Type your product and the AI writes fresh scripts in the same style. Never a copy.');
+      say(7, 'Last trick: “Make it mine”. Type your product, and the AI writes fresh scripts in the same style. Never a copy.');
       if (!document.querySelector('#layer .drawer') && data.ad) SV.openAd(data.ad.ad.id, { data: data.ad, tour: true });
       return until('#mine', my).then(function () { unspot(); return scrollTo('#mine', my); }).then(function () { highlight('#mineForm', 6); return click('#product', my); })
         .then(function () { return typeInto('#product', 'organic hair oil', my); }).then(function () { return moveTo('#mineForm .btn', my); })
@@ -172,7 +202,7 @@
     var my = ++run;
     paused = false; setPP();
     var chain = Promise.resolve();
-    for (var k = i; k < STEPS.length; k++) (function (k) { chain = chain.then(function () { alive(my); return STEPS[k](my); }); })(k);
+    for (var k = i; k < STEPS.length; k++) (function (k) { chain = chain.then(function () { alive(my); return STEPS[k](my); }).then(function () { return voiceDone(my); }); })(k);
     chain.then(function () { if (my === run) finish(); }).catch(function (e) { if (!(e instanceof Abort)) { console.error(e); finish(); } });
   }
 
@@ -181,7 +211,8 @@
   function finish() {
     run++;
     unspot();
-    if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+    hush();
+    chapter = 8; narrate(8, 'You’re ready, agent. Search like you talk, look for ads running thirty days or more, read the AI breakdown, then make it yours. Happy spying!');
     var end = document.createElement('div');
     end.className = 'tour-end';
     end.innerHTML = '<div class="card"><button class="x" type="button" data-x aria-label="Close" style="position:absolute;right:14px;top:14px">' + I('x') + '</button><div class="art">' + SV.agent(SV.cast.guide, { pose: 'cheer' }) + '</div><span class="eyebrow" style="color:var(--pink)">Tour complete</span><h2 style="margin-top:8px">You’re ready, agent.</h2><p>Search like you talk, look for ads running 30+ days, read the AI breakdown, then make it yours.</p><div class="row"><button class="btn ghost" type="button" data-again>' + I('play') + 'Watch again</button><button class="btn grad" type="button" data-start>' + I('search') + 'Start spying</button></div></div>';
@@ -197,6 +228,15 @@
   T.start = function () {
     if (ui) return;
     SV.closeLayers(true);
+    // Created inside the tap that started the tour, so phones let it play for the whole tour.
+    try {
+      if (!aud) { aud = new Audio(); aud.preload = 'auto'; }
+      aud.onerror = function () { clipBroken[Number(aud.dataset.i) || 0] = true; };
+      aud.dataset.i = '0'; aud.src = clip(0); primed = true;
+      var pp = aud.play(); if (pp && pp.then) pp.then(function () { if (primed) { aud.pause(); aud.currentTime = 0; } }).catch(function () {});
+    } catch (e) { aud = null; }
+    // iPhone only lets the device voice speak after it was started inside a tap: start it silently now.
+    try { if (window.speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch (e) { /* no voice */ }
     SV.get('/api/app/tour').then(function (d) {
       data = d;
       mockApi(true);
@@ -207,7 +247,7 @@
       ui.innerHTML = '<div class="tour-top"><span class="mark" style="width:34px;height:34px">' + SV.MARK + '</span><b>How Spyvoo works</b><span class="rec"><i></i>LIVE DEMO</span><button class="x" type="button" aria-label="Close tour">' + I('x', ' width="18" height="18"') + '</button></div>' +
         '<div class="tour-bar" role="region" aria-label="Tour"><div class="tour-cap"><span class="guide">' + SV.agent(SV.cast.guide, { crop: true }) + '</span><p></p></div>' +
         '<div class="tour-ctl"><button class="pp" type="button"></button><div class="tour-prog">' + CH.map(function (c, i) { return '<button type="button" title="' + esc(c.k) + '" data-ch="' + i + '"><i></i></button>'; }).join('') + '</div>' +
-        '<button class="pp" type="button" data-voice aria-label="Voice" style="background:rgba(255,255,255,.12);color:#fff" title="Narration voice">' + I('bell') + '</button></div></div>';
+        '<button class="pp" type="button" data-voice aria-label="Narration on" style="background:var(--blue);color:#fff" title="Narration voice">' + I('sound') + '</button></div></div>';
       document.body.appendChild(ui);
       ui.querySelector('.mark').style.background = 'var(--blue)';
       cursor = document.createElement('div'); cursor.className = 'tcursor';
@@ -216,8 +256,17 @@
       document.body.appendChild(cursor);
       spot = document.createElement('div'); spot.className = 'tspot'; document.body.appendChild(spot);
       ui.querySelector('.x').onclick = T.stop;
-      ui.querySelector('.pp').onclick = function () { paused = !paused; setPP(); if (window.speechSynthesis) try { paused ? speechSynthesis.pause() : speechSynthesis.resume(); } catch (e) { /* ignore */ } };
-      ui.querySelector('[data-voice]').onclick = function () { voice = !voice; this.style.background = voice ? 'var(--pink)' : 'rgba(255,255,255,.12)'; SV.toast(voice ? 'Narration on' : 'Narration off', { icon: 'bell', ms: 1500 }); if (!voice && window.speechSynthesis) speechSynthesis.cancel(); };
+      ui.querySelector('.pp').onclick = function () {
+        paused = !paused; setPP();
+        try { if (aud && aud.dataset.i === String(chapter) && !aud.ended) { if (paused) aud.pause(); else if (voice) aud.play().catch(function () {}); } } catch (e) { /* ignore */ }
+        if (window.speechSynthesis) try { paused ? speechSynthesis.pause() : speechSynthesis.resume(); } catch (e) { /* ignore */ }
+      };
+      ui.querySelector('[data-voice]').onclick = function () {
+        voice = !voice;
+        this.style.background = voice ? 'var(--blue)' : 'rgba(255,255,255,.12)'; this.innerHTML = I(voice ? 'sound' : 'mute'); this.setAttribute('aria-label', voice ? 'Narration on' : 'Narration off');
+        SV.toast(voice ? 'Narration on' : 'Narration off', { icon: 'bell', ms: 1500 });
+        if (!voice) hush(); else if (!paused) { if (aud) aud.dataset.i = ''; narrate(chapter, lastText[chapter] || ''); }
+      };
       SV.$$('[data-ch]', ui).forEach(function (b) { b.onclick = function () { var e = document.querySelector('.tour-end'); if (e) e.remove(); playFrom(Number(b.dataset.ch)); }; });
       document.addEventListener('keydown', keys);
       playFrom(0);
@@ -226,7 +275,7 @@
   function keys(e) { if (!ui) return; if (e.key === 'Escape') T.stop(); if (e.key === ' ') { e.preventDefault(); ui.querySelector('.pp').click(); } }
   T.stop = function () {
     run++;
-    if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+    hush();
     mockApi(false);
     [ui, cursor, spot, document.querySelector('.tour-end')].forEach(function (x) { if (x) x.remove(); });
     ui = cursor = spot = null;
