@@ -49,7 +49,7 @@ function familyHtml() {
 
 function baseData() {
   const c = settings.get('company');
-  return { app_url: config.appUrl, logo_url: /^https?:/.test(c.logo_url) ? c.logo_url : config.appUrl + c.logo_url, company_name: c.legal_name, company_city: c.city, support_email: c.support_email, agent_name: (settings.get('support') || {}).agent_name || 'Leo', year: new Date().getFullYear(), family_html: familyHtml() };
+  return { app_url: config.appUrl, logo_url: /^https?:/.test(c.logo_url) ? c.logo_url : config.appUrl + c.logo_url, company_name: c.legal_name, company_city: c.city, support_email: c.support_email, agent_name: 'Spyvoo Support', year: new Date().getFullYear(), family_html: familyHtml() };
 }
 
 function build(name, data = {}) {

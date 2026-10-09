@@ -6,7 +6,7 @@
   var SV = window.SV, esc = SV.esc, I = SV.I, $ = SV.$;
   var T = SV.tour = {};
   var ui, cursor, spot, data, run = 0, paused = false, chapter = 0, voice = true, realApi = null;
-  // Narration: a studio voice recorded once (public/audio/tour/0-8.mp3, made by scripts/tour-voice.js). One audio
+  // Narration: a studio voice recorded once (public/audio/tour/0-8.mp3 + music.mp3, made by scripts/tour-voice.js). One audio
   // element is reused so phones allow it after the first tap. If a clip is missing, the device's own voice reads it.
   var aud = null, clipBroken = {}, primed = false, lastText = {};
   function clip(i) { return '/audio/tour/' + i + '.mp3'; }
@@ -35,6 +35,40 @@
         setTimeout(look, 100);
       })();
     });
+  }
+  // Soft music bed (public/audio/tour/music.mp3). It plays through Web Audio so the volume works on iPhone too, and
+  // dips under the narrator, rises a little between lines, and fades out at the end. No file = no music, nothing breaks.
+  var mus = null, mctx = null, mgain = null, music = true, mTimer = null, MUSIC = '/audio/tour/music.mp3';
+  var BED = 0.22, DUCK = 0.08;
+  function talkingNow() { return voice && ((aud && !aud.paused && !aud.ended && aud.currentTime > 0 && !aud.error) || (window.speechSynthesis && speechSynthesis.speaking)); }
+  function musicLevel() { return (!music || paused || !ui) ? 0 : (talkingNow() ? DUCK : BED); }
+  function setVol(v, secs) {
+    if (mgain && mctx) { var g = mgain.gain, t = mctx.currentTime; try { g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(v, t + (secs || 0.6)); } catch (e) { g.value = v; } }
+    else if (mus) { try { mus.volume = v; } catch (e) { /* ignore */ } }
+  }
+  function musicStart() {
+    try {
+      if (!mus) {
+        mus = new Audio(); mus.loop = true; mus.preload = 'auto'; mus.crossOrigin = 'anonymous';
+        mus.onerror = function () { mus = null; if (mTimer) { clearInterval(mTimer); mTimer = null; } var b = ui && ui.querySelector('[data-music]'); if (b) b.hidden = true; };
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) { try { mctx = new AC(); mgain = mctx.createGain(); mgain.gain.value = 0; mctx.createMediaElementSource(mus).connect(mgain); mgain.connect(mctx.destination); } catch (e) { mctx = mgain = null; } }
+        if (!mgain) { mus.volume = 0; if (mus.volume !== 0) { mus = null; return; } } // iPhone without Web Audio: volume is fixed, so skip music rather than blast it
+        mus.src = MUSIC;
+      }
+      if (mctx && mctx.state === 'suspended') mctx.resume().catch(function () {});
+      mus.currentTime = 0;
+      var p = mus.play(); if (p && p.catch) p.catch(function () { /* blocked or missing: tour still works */ });
+      setVol(0, 0.01);
+      if (mTimer) clearInterval(mTimer);
+      mTimer = setInterval(function () { if (mus) setVol(musicLevel(), 0.5); }, 250);
+    } catch (e) { mus = null; }
+  }
+  function musicStop(fadeSecs) {
+    if (mTimer) { clearInterval(mTimer); mTimer = null; }
+    if (!mus) return;
+    var m = mus; setVol(0, fadeSecs || 0.8);
+    setTimeout(function () { if (m && !mTimer) try { m.pause(); } catch (e) { /* ignore */ } }, ((fadeSecs || 0.8) * 1000) + 80);
   }
   var CH = [
     { k: 'Your HQ', d: 7 }, { k: 'Ask', d: 9 }, { k: 'Filters', d: 6 }, { k: 'Winners', d: 7 },
@@ -202,7 +236,7 @@
     var my = ++run;
     paused = false; setPP();
     var chain = Promise.resolve();
-    for (var k = i; k < STEPS.length; k++) (function (k) { chain = chain.then(function () { alive(my); return STEPS[k](my); }).then(function () { return voiceDone(my); }); })(k);
+    for (var k = i; k < STEPS.length; k++) (function (k) { chain = chain.then(function () { alive(my); return STEPS[k](my); }).then(function () { return voiceDone(my); }).then(function () { return wait(voice ? 550 : 0, my); }); })(k);
     chain.then(function () { if (my === run) finish(); }).catch(function (e) { if (!(e instanceof Abort)) { console.error(e); finish(); } });
   }
 
@@ -220,7 +254,8 @@
     SV.confetti(null, innerHeight / 3, 200);
     SV.post('/api/app/onboarding', { tour_seen: true }).catch(function () {});
     if (SV.state.boot) SV.state.boot.user.onboarding.tour_seen = true;
-    end.querySelector('[data-again]').onclick = function () { end.remove(); playFrom(0); };
+    setTimeout(function () { if (document.querySelector('.tour-end')) musicStop(4); }, 9000);
+    end.querySelector('[data-again]').onclick = function () { end.remove(); musicStart(); playFrom(0); };
     end.querySelector('[data-x]').onclick = function () { end.remove(); T.stop(); };
     end.querySelector('[data-start]').onclick = function () { end.remove(); T.stop(); SV.go('/app/discover'); };
   }
@@ -235,6 +270,7 @@
       aud.dataset.i = '0'; aud.src = clip(0); primed = true;
       var pp = aud.play(); if (pp && pp.then) pp.then(function () { if (primed) { aud.pause(); aud.currentTime = 0; } }).catch(function () {});
     } catch (e) { aud = null; }
+    musicStart();
     // iPhone only lets the device voice speak after it was started inside a tap: start it silently now.
     try { if (window.speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch (e) { /* no voice */ }
     SV.get('/api/app/tour').then(function (d) {
@@ -247,7 +283,8 @@
       ui.innerHTML = '<div class="tour-top"><span class="mark" style="width:34px;height:34px">' + SV.MARK + '</span><b>How Spyvoo works</b><span class="rec"><i></i>LIVE DEMO</span><button class="x" type="button" aria-label="Close tour">' + I('x', ' width="18" height="18"') + '</button></div>' +
         '<div class="tour-bar" role="region" aria-label="Tour"><div class="tour-cap"><span class="guide">' + SV.agent(SV.cast.guide, { crop: true }) + '</span><p></p></div>' +
         '<div class="tour-ctl"><button class="pp" type="button"></button><div class="tour-prog">' + CH.map(function (c, i) { return '<button type="button" title="' + esc(c.k) + '" data-ch="' + i + '"><i></i></button>'; }).join('') + '</div>' +
-        '<button class="pp" type="button" data-voice aria-label="Narration on" style="background:var(--blue);color:#fff" title="Narration voice">' + I('sound') + '</button></div></div>';
+        '<button class="pp" type="button" data-voice aria-label="Narration on" style="background:var(--blue);color:#fff" title="Narration voice">' + I('sound') + '</button>' +
+        '<button class="pp" type="button" data-music aria-label="Music on" style="background:var(--blue);color:#fff" title="Background music">' + I('music') + '</button></div></div>';
       document.body.appendChild(ui);
       ui.querySelector('.mark').style.background = 'var(--blue)';
       cursor = document.createElement('div'); cursor.className = 'tcursor';
@@ -267,6 +304,13 @@
         SV.toast(voice ? 'Narration on' : 'Narration off', { icon: 'bell', ms: 1500 });
         if (!voice) hush(); else if (!paused) { if (aud) aud.dataset.i = ''; narrate(chapter, lastText[chapter] || ''); }
       };
+      ui.querySelector('[data-music]').onclick = function () {
+        music = !music;
+        this.style.background = music ? 'var(--blue)' : 'rgba(255,255,255,.12)'; this.style.opacity = music ? '1' : '.6'; this.setAttribute('aria-label', music ? 'Music on' : 'Music off');
+        SV.toast(music ? 'Music on' : 'Music off', { icon: 'bell', ms: 1500 });
+        if (music && mus && mus.paused) { if (mctx && mctx.state === 'suspended') mctx.resume().catch(function () {}); mus.play().catch(function () {}); }
+      };
+      if (!mus) ui.querySelector('[data-music]').hidden = true;
       SV.$$('[data-ch]', ui).forEach(function (b) { b.onclick = function () { var e = document.querySelector('.tour-end'); if (e) e.remove(); playFrom(Number(b.dataset.ch)); }; });
       document.addEventListener('keydown', keys);
       playFrom(0);
@@ -276,6 +320,7 @@
   T.stop = function () {
     run++;
     hush();
+    musicStop(0.8);
     mockApi(false);
     [ui, cursor, spot, document.querySelector('.tour-end')].forEach(function (x) { if (x) x.remove(); });
     ui = cursor = spot = null;

@@ -43,6 +43,10 @@
       : p.glasses
         ? '<g class="eyes"><rect x="80" y="73" width="17" height="12" rx="5" fill="#0A1638"/><rect x="103" y="73" width="17" height="12" rx="5" fill="#0A1638"/><rect x="96" y="77" width="8" height="2.5" fill="#0A1638"/><rect x="83" y="75" width="6" height="2.5" rx="1" fill="#fff" opacity=".6"/><rect x="106" y="75" width="6" height="2.5" rx="1" fill="#fff" opacity=".6"/></g>'
         : '<g class="eyes"><ellipse cx="89" cy="80" rx="3.6" ry="4.4" fill="#0A1638"/><ellipse cx="111" cy="80" rx="3.6" ry="4.4" fill="#0A1638"/><circle cx="90.2" cy="78.6" r="1.2" fill="#fff"/><circle cx="112.2" cy="78.6" r="1.2" fill="#fff"/></g>';
+    if (mood === 'happy') return '<g class="eyes"><path d="M84 81q5-6 10 0" stroke="#0A1638" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M106 81q5-6 10 0" stroke="#0A1638" stroke-width="3.2" fill="none" stroke-linecap="round"/></g>' +
+      '<path d="M82 70l9-2M109 68l9 2" stroke="' + p.hair + '" stroke-width="2.8" stroke-linecap="round"/>' +
+      '<ellipse cx="79" cy="91" rx="6" ry="3.6" fill="#FF7A8A" opacity=".5"/><ellipse cx="121" cy="91" rx="6" ry="3.6" fill="#FF7A8A" opacity=".5"/>' +
+      '<path d="M86 91q14 17 28 0z" fill="#5A1F22"/><path d="M89 92.5q11 6 22 0z" fill="#fff"/><path d="M93 100q7 3 14 0" stroke="#FF8A9A" stroke-width="3" fill="none" stroke-linecap="round" opacity=".8"/>';
     var mouth = mood === 'wow' ? '<ellipse cx="100" cy="98" rx="5" ry="6" fill="#5A1F22"/>'
       : mood === 'sleep' ? '<path d="M95 98q5 3 10 0" stroke="#5A1F22" stroke-width="2.4" fill="none" stroke-linecap="round"/>'
         : '<path d="M89 93q11 12 22 0z" fill="#5A1F22"/><path d="M92 95q8 5 16 0" fill="#fff" opacity=".9"/>';
@@ -92,6 +96,22 @@
     spy: SV.persona('spy', { skin: '#F2C9A5', hair: '#5A3418', style: 'short', coat: '#0A1638', hat: true, band: '#FF3D8B', glasses: true, bg: '#FFE3EC' }),
     fan: SV.persona('fan', { skin: '#7A4A2A', hair: '#1B1210', style: 'bun', coat: '#FF3D8B', glasses: false, tie: '#FFC21A', bg: '#FFF1D0' })
   };
+
+  // Spyvoo Support team: always smiling, no hats or shades, so customers see a friendly face. Unknown names (set in
+  // Admin → Support) still get a stable look of their own.
+  var TEAM = {
+    amara: { skin: '#8D5A3B', hair: '#1B1210', style: 'curly', coat: '#1F5BFF', tie: '#FFC21A', bg: '#E8EFFF' },
+    daniel: { skin: '#F2C9A5', hair: '#6B3F1F', style: 'short', coat: '#14B88A', tie: '#1F5BFF', bg: '#E6FBF4' },
+    sofia: { skin: '#E3AD84', hair: '#3A2316', style: 'long', coat: '#7B5CFF', tie: '#FF9F1C', bg: '#F1EDFF' },
+    kenji: { skin: '#F0CFA8', hair: '#111111', style: 'short', coat: '#0A1638', tie: '#14C894', bg: '#FFF1D0' },
+    zara: { skin: '#A86B43', hair: '#2A1A12', style: 'bun', coat: '#FF9F1C', tie: '#1F5BFF', bg: '#FFE3EC' },
+    lucas: { skin: '#D9A27A', hair: '#2B1B12', style: 'curly', coat: '#FF3D8B', tie: '#FFC21A', bg: '#E8EFFF' }
+  };
+  SV.teamPersona = function (name) {
+    var k = String(name || '').toLowerCase().trim();
+    return SV.persona('team:' + k, Object.assign({ hat: false, glasses: false }, TEAM[k] || {}));
+  };
+  SV.teamFace = function (name) { return SV.agent(SV.teamPersona(name), { crop: true, pose: 'idle', mood: 'happy' }); };
 
   // Empty-state scene: a person plus floating props.
   SV.scene = function (who, pose, props) {

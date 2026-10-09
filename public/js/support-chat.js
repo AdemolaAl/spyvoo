@@ -36,6 +36,7 @@
     '.svc-x:hover{background:rgba(255,255,255,.28)}' +
     '.svc-body{flex:1;overflow-y:auto;padding:16px 14px 8px;display:flex;flex-direction:column;gap:4px;scroll-behavior:smooth;overscroll-behavior:contain}' +
     '.svc-hello{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;margin:18px auto 14px;animation:svcIn .5s both}.svc-hello-av{width:78px;height:78px;border-radius:50%;overflow:hidden;background:#E8EFFF;box-shadow:0 0 0 4px var(--c-card),0 12px 26px -12px rgba(31,91,255,.6);margin-bottom:6px}.svc-hello b{font:800 18px/1.1 "Bricolage Grotesque",Manrope,sans-serif}.svc-hello span{font-size:13px;font-weight:700;color:var(--c-mut)}' +
+    '.svc-stack{display:flex;justify-content:center;margin-bottom:8px}.svc-stk{border-radius:50%;overflow:hidden;background:#E8EFFF;box-shadow:0 0 0 3px var(--c-card),0 10px 22px -12px rgba(31,91,255,.6);margin-left:-14px;position:relative;display:block;animation:svcIn .5s both}.svc-stk:first-child{margin-left:0}.svc-stk:nth-child(2){animation-delay:.08s}.svc-stk:nth-child(3){animation-delay:.16s}' +
     '.svc-day{align-self:center;font-size:11.5px;font-weight:800;color:var(--c-mut);letter-spacing:.06em;text-transform:uppercase;margin:6px 0 8px}' +
     '.svc-row{display:flex;gap:8px;align-items:flex-end;max-width:100%}' +
     '.svc-row.me{justify-content:flex-end}' +
@@ -110,14 +111,38 @@
     return fetch(path, o).then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) { var e = new Error(d.error || 'Something went wrong'); e.status = r.status; throw e; } return d; }); });
   };
 
-  var st = { agent: { name: 'Leo', role: 'Spyvoo support', look: 'spy' }, you: null, seen: {}, lastId: 0, queue: [], playing: false, open: false, unread: 0, waitingHuman: false, booted: false, pending: 0 };
+  var TEAM0 = ['Amara', 'Daniel', 'Sofia', 'Kenji', 'Zara', 'Lucas'];
+  var st = { agent: { name: 'Spyvoo Support', role: 'Spyvoo Support', assigned: false, team: TEAM0 }, you: null, seen: {}, lastId: 0, queue: [], playing: false, open: false, unread: 0, waitingHuman: false, booted: false, pending: 0 };
   var root, body, input, sendBtn, badge, chips, note, statusEl;
 
-  function face(size) {
-    var cast = SV.cast && SV.cast[st.agent.look];
-    if (SV.agent && cast) return SV.agent(cast, { crop: true, pose: 'idle' });
-    // Simple stand-in until the illustrations load.
-    return '<svg viewBox="0 0 84 84" aria-hidden="true"><rect width="84" height="84" fill="#FFE3EC"/><circle cx="42" cy="50" r="22" fill="#F2C9A5"/><rect x="18" y="22" width="48" height="8" rx="4" fill="#0A1638"/><path d="M26 22c0-12 6-16 16-16s16 4 16 16z" fill="#0A1638"/><rect x="26" y="18" width="32" height="4" fill="#FF3D8B"/><rect x="28" y="44" width="11" height="8" rx="3" fill="#0A1638"/><rect x="45" y="44" width="11" height="8" rx="3" fill="#0A1638"/><path d="M35 60q7 6 14 0" stroke="#5A1F22" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>';
+  // The teammate looking after this chat (or the first of the team before anyone is assigned). Always smiling.
+  function who() { return st.agent.assigned ? st.agent.name : ((st.agent.team || TEAM0)[0] || 'Amara'); }
+  function face(name) {
+    if (SV.teamFace) return SV.teamFace(name || who());
+    // Simple smiling stand-in until the illustrations load.
+    return '<svg viewBox="0 0 84 84" aria-hidden="true"><rect width="84" height="84" fill="#E8EFFF"/><circle cx="42" cy="48" r="24" fill="#C98D62"/><path d="M18 44c0-18 10-28 24-28s24 10 24 28c-6-8-14-11-24-11s-18 3-24 11z" fill="#1B1210"/><path d="M31 47q4-5 8 0M45 47q4-5 8 0" stroke="#0A1638" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M32 55q10 12 20 0z" fill="#5A1F22"/><path d="M34 56q8 4 16 0z" fill="#fff"/></svg>';
+  }
+  // Three smiling faces side by side: "the team".
+  function teamStack(size) {
+    return '<span class="svc-stack">' + (st.agent.team || TEAM0).slice(0, 3).map(function (n, i) { return '<span class="svc-stk" style="width:' + size + 'px;height:' + size + 'px;z-index:' + (3 - i) + '">' + face(n) + '</span>'; }).join('') + '</span>';
+  }
+  function title() { return 'Spyvoo Support'; }
+  function sub() { return (st.agent.assigned ? st.agent.name + ' · ' : '') + 'Online · replies in seconds'; }
+  function refreshHead() {
+    if (!root) return;
+    var av = root.querySelector('.svc-head .svc-av'); if (av) av.innerHTML = face() + '<span class="svc-on"></span>';
+    var fc = root.querySelector('.svc-fab .svc-face'); if (fc) fc.innerHTML = face();
+    root.querySelector('.svc-head b').textContent = title();
+    root.querySelector('.svc-fab').setAttribute('aria-label', 'Chat with Spyvoo Support');
+    input.placeholder = 'Message ' + (st.agent.assigned ? st.agent.name : 'Spyvoo Support') + '…';
+    root.querySelector('.svc-brand').textContent = 'Spyvoo Support · 24/7';
+    setStatus();
+  }
+  function setAgent(a) {
+    if (!a) return;
+    var was = st.agent.assigned ? st.agent.name : '';
+    st.agent = a;
+    if ((a.assigned ? a.name : '') !== was) refreshHead();
   }
   function needArt(cb) {
     if (SV.agent) return cb();
@@ -129,12 +154,12 @@
     root = doc.createElement('div'); root.className = 'svc';
     if (doc.getElementById('tabbar')) root.classList.add('on-tabbar');
     root.innerHTML =
-      '<button class="svc-fab" type="button" aria-label="Chat with ' + esc(st.agent.name) + ', Spyvoo support"><span class="svc-face">' + face() + '</span><span class="svc-on"></span></button>' +
+      '<button class="svc-fab" type="button" aria-label="Chat with Spyvoo Support"><span class="svc-face">' + face() + '</span><span class="svc-on"></span></button>' +
       '<section class="svc-panel" role="dialog" aria-modal="false" aria-label="Spyvoo support chat">' +
-      '<header class="svc-head"><span class="svc-av">' + face() + '<span class="svc-on"></span></span><div><b>' + esc(st.agent.name) + '</b><small><i></i><span class="svc-status">Online · replies in seconds</span></small></div><button class="svc-x" type="button" aria-label="Close chat">×</button></header>' +
+      '<header class="svc-head"><span class="svc-av">' + face() + '<span class="svc-on"></span></span><div><b>' + esc(title()) + '</b><small><i></i><span class="svc-status">' + esc(sub()) + '</span></small></div><button class="svc-x" type="button" aria-label="Close chat">×</button></header>' +
       '<div class="svc-body" aria-live="polite"></div><div class="svc-chips"></div><div class="svc-note" hidden></div>' +
-      '<form class="svc-foot"><textarea rows="1" maxlength="2000" placeholder="Message ' + esc(st.agent.name) + '…" aria-label="Your message"></textarea><button class="svc-send" type="submit" aria-label="Send" disabled>' + SEND + '</button></form>' +
-      '<div class="svc-brand">' + esc(st.agent.role) + ' · 24/7</div></section>';
+      '<form class="svc-foot"><textarea rows="1" maxlength="2000" placeholder="Message Spyvoo Support…" aria-label="Your message"></textarea><button class="svc-send" type="submit" aria-label="Send" disabled>' + SEND + '</button></form>' +
+      '<div class="svc-brand">Spyvoo Support · 24/7</div></section>';
     doc.body.appendChild(root);
     body = root.querySelector('.svc-body'); input = root.querySelector('textarea'); sendBtn = root.querySelector('.svc-send');
     chips = root.querySelector('.svc-chips'); note = root.querySelector('.svc-note'); statusEl = root.querySelector('.svc-status');
@@ -156,7 +181,7 @@
     else if (b) b.remove();
   }
   function setStatus() {
-    statusEl.textContent = st.waitingHuman ? 'A teammate is on this chat' : 'Online · replies in seconds';
+    statusEl.textContent = st.waitingHuman ? 'A teammate is on this chat' : sub();
     note.hidden = !st.waitingHuman;
     note.textContent = 'A Spyvoo teammate is handling this chat. They’ll reply right here.';
   }
@@ -187,7 +212,7 @@
 
   var typingEl = null;
   function typing(on) {
-    if (on && !typingEl) { typingEl = doc.createElement('div'); typingEl.className = 'svc-row them lead'; typingEl.innerHTML = '<span class="svc-mini">' + face() + '</span><div class="svc-b svc-typing" aria-label="' + esc(st.agent.name) + ' is typing"><i></i><i></i><i></i></div>'; body.appendChild(typingEl); scroll(); }
+    if (on && !typingEl) { typingEl = doc.createElement('div'); typingEl.className = 'svc-row them lead'; typingEl.innerHTML = '<span class="svc-mini">' + face() + '</span><div class="svc-b svc-typing" aria-label="' + esc(who()) + ' is typing"><i></i><i></i><i></i></div>'; body.appendChild(typingEl); scroll(); }
     else if (!on && typingEl) { typingEl.remove(); typingEl = null; }
   }
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
@@ -232,7 +257,7 @@
     setTimeout(function () { if (st.pending) { st.typingSince = Date.now(); if (!st.playing) typing(true); } }, 700 + Math.random() * 500);
     api('POST', '/api/support/messages', { text: text }).then(function (d) {
       st.pending--;
-      st.waitingHuman = !!d.waiting_human; setStatus();
+      st.waitingHuman = !!d.waiting_human; setAgent(d.agent); setStatus();
       if (!d.messages || !d.messages.length) { if (!st.playing && !st.pending) typing(false); return; }
       enqueue(d.messages);
     }).catch(function (e) {
@@ -244,7 +269,10 @@
   // An empty chat shows who you're talking to and a few ideas. The agent's own greeting is the first message.
   function intro() {
     if (body.children.length) return;
-    body.innerHTML = '<div class="svc-hello"><span class="svc-hello-av">' + face() + '</span><b>' + esc(st.agent.name) + '</b><span>' + esc(st.agent.role) + ' · usually replies in seconds, 24/7</span></div>';
+    var tm = st.agent.team || TEAM0;
+    body.innerHTML = st.agent.assigned
+      ? '<div class="svc-hello"><span class="svc-hello-av">' + face() + '</span><b>' + esc(st.agent.name) + '</b><span>Spyvoo Support · usually replies in seconds, 24/7</span></div>'
+      : '<div class="svc-hello">' + teamStack(64) + '<b>Spyvoo Support</b><span>' + esc(tm.slice(0, 3).join(', ')) + ' and the team · replies in seconds, 24/7</span></div>';
     var opts = st.you ? ['My payment isn’t showing 💸', 'Find winning ads for my niche 🔎', 'Which plan is right for me?', 'Talk to a person 🙋'] : ['What does Spyvoo do?', 'How much is it?', 'Can I pay with crypto?', 'Is there a free plan?'];
     chips.innerHTML = opts.map(function (t, i) { return '<button type="button" style="animation-delay:' + (0.25 + i * 0.07) + 's">' + esc(t) + '</button>'; }).join('');
     Array.prototype.forEach.call(chips.querySelectorAll('button'), function (b) { b.onclick = function () { submit(b.textContent); }; });
@@ -268,6 +296,7 @@
       st.booted = true;
       if (d.on === false) { root.remove(); st.off = true; return; }
       if (d.agent) st.agent = d.agent;
+      if (!st.agent.team) st.agent.team = TEAM0;
       st.you = d.you; st.waitingHuman = !!d.waiting_human; setStatus();
       var hist = d.messages || [];
       if (hist.length) { body.insertAdjacentHTML('beforeend', '<div class="svc-day">Earlier</div>'); enqueue(hist, { instant: true, withUser: true }); }
@@ -284,7 +313,7 @@
       if (doc.hidden) { pollT = setTimeout(tick, 15000); return; }
       api('GET', '/api/support/poll?after=' + st.lastId).then(function (d) {
         if (gen !== pollGen) return;
-        st.waitingHuman = !!d.waiting_human; setStatus();
+        st.waitingHuman = !!d.waiting_human; setAgent(d.agent); setStatus();
         // Our own answers come back with the send request; the poll brings a teammate's replies (and other tabs').
         if (d.messages && d.messages.length && !st.pending) enqueue(d.messages, { polled: true });
         if (!st.open) setBadge(d.unread || 0);
@@ -297,7 +326,7 @@
     ss('svc-teased', '1');
     var n = st.you && st.you.first_name;
     var el = doc.createElement('div'); el.className = 'svc-tease svc';
-    el.innerHTML = esc(st.you ? 'Hi' + (n ? ' ' + n : '') + ' 👋 Need a hand? I’m here 24/7.' : 'Questions about Spyvoo? Ask me 👀') + '<button type="button" aria-label="Dismiss">×</button>';
+    el.innerHTML = esc(st.you ? 'Hi' + (n ? ' ' + n : '') + ' 👋 ' + (st.agent.assigned ? 'It’s ' + st.agent.name + ' from Spyvoo Support. Need a hand?' : 'Need a hand? Spyvoo Support is here 24/7.') : 'Questions about Spyvoo? Ask us 👀') + '<button type="button" aria-label="Dismiss">×</button>';
     el.onclick = function (e) { if (e.target.tagName === 'BUTTON') { el.remove(); return; } openChat(); };
     if (root.classList.contains('on-tabbar')) el.classList.add('on-tabbar');
     doc.body.appendChild(el);
@@ -322,10 +351,7 @@
     needArt(function () { Array.prototype.forEach.call(root.querySelectorAll('.svc-face,.svc-av'), function (el) { var dot = el.querySelector('.svc-on'); el.innerHTML = face() + (dot ? dot.outerHTML : ''); }); });
     load().then(function () {
       if (st.off) return;
-      root.querySelector('.svc-fab').setAttribute('aria-label', 'Chat with ' + st.agent.name + ', ' + st.agent.role);
-      root.querySelector('.svc-head b').textContent = st.agent.name;
-      input.placeholder = 'Message ' + st.agent.name + '…';
-      root.querySelector('.svc-brand').textContent = st.agent.role + ' · 24/7';
+      refreshHead();
       // Reopen after a reload only on bigger screens; on a phone the chat is full-screen and would cover the new page.
       if (/[?&]support=1/.test(location.search) || (ss('svc-open') === '1' && window.innerWidth > 560)) openChat();
       else setTimeout(tease, 9000);

@@ -51,7 +51,7 @@ module.exports = function (app) {
     if (text.length > 2000) throw new HttpError(400, 'That message is too long. Keep it under 2,000 characters.');
     try {
       const r = await support.send(w, text);
-      return { messages: r.messages, waiting_human: r.waiting_human };
+      return { messages: r.messages, waiting_human: r.waiting_human, agent: r.agent };
     } catch (e) {
       if (e.status) throw new HttpError(e.status, e.message);
       throw e;

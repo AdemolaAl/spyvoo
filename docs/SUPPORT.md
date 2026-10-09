@@ -1,12 +1,15 @@
 # Support agent (24/7)
 
-Spyvoo has its own support agent in the corner of the dashboard and the website. By default it's called **Leo**, with
-the spy look; the name and look can be changed in Admin → Support → Agent settings. It talks like a person texting:
+Spyvoo has its own 24/7 support chat in the corner of the dashboard and the website. The header says **Spyvoo Support**.
+Behind it is a team of named teammates with smiling faces (by default Amara, Daniel, Sofia, Kenji, Zara and Lucas; change
+the names in Admin → Support → Agent settings). Each customer always gets the same teammate, and that teammate
+introduces themselves at the start of every conversation. It's the AI agent answering under that name: if a customer
+sincerely asks whether it's a bot, it says so honestly and offers a human. It talks like a person texting:
 - It greets by first name.
 - It sends short separate messages, with typing dots sized to each one, so the reply never arrives as one block.
 - The opener depends on the mood: playful when the customer is relaxed, straight to work when it's about money.
 
-> Hi Tunde 👋
+> Hi Tunde 👋 I’m Amara from Spyvoo Support 😊
 > Thanks for contacting Spyvoo 👀
 > I guess you’ve been spying good..
 > Searches reset every day at midnight UTC. You’ve used 4 of your 10 today.

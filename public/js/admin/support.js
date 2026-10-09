@@ -5,8 +5,8 @@
   'use strict';
   var SV = window.SV, A = SV.A, esc = SV.esc, I = SV.I, P = A.pages;
   var timer = null;
-  var LOOKS = [['spy', 'Spy (hat + shades)'], ['host', 'Host'], ['guide', 'Guide'], ['fan', 'Fan']];
-  var face = function (look, size) { return '<span style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;overflow:hidden;display:inline-block;flex:0 0 auto;background:#E8EFFF">' + SV.agent(SV.cast[look] || SV.cast.spy, { crop: true, pose: 'idle' }) + '</span>'; };
+  var face = function (name, size) { return '<span style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;overflow:hidden;display:inline-block;flex:0 0 auto;background:#E8EFFF">' + (SV.teamFace ? SV.teamFace(name) : SV.agent(SV.cast.guide, { crop: true, pose: 'idle' })) + '</span>'; };
+  var teamRow = function (names, size) { return '<span style="display:inline-flex">' + (names || []).map(function (n, i) { return '<span title="' + esc(n) + '" style="margin-left:' + (i ? -10 : 0) + 'px;box-shadow:0 0 0 3px var(--card);border-radius:50%;display:inline-flex">' + face(n, size) + '</span>'; }).join('') + '</span>'; };
   var rich = function (t) { return esc(t).replace(/\*\*([^*\n]{1,120})\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>'); };
 
   P['/admin/support'] = function (view) {
@@ -47,7 +47,7 @@
       el.innerHTML = '<input class="input" id="supQ" placeholder="Search name or email" value="' + esc(st.q) + '" style="margin-bottom:8px">' +
         (d.items.length ? d.items.map(function (t) {
           var nm = t.user ? (t.user.name || t.user.email) : 'Website visitor';
-          return '<div class="sup-item' + (t.id === st.open ? ' on' : '') + '" data-id="' + t.id + '">' + (t.user ? SV.avatar(t.user.email).replace('<svg', '<svg style="width:38px;height:38px;border-radius:50%;flex:0 0 auto"') : face('guide', 38)) +
+          return '<div class="sup-item' + (t.id === st.open ? ' on' : '') + '" data-id="' + t.id + '">' + (t.user ? SV.avatar(t.user.email).replace('<svg', '<svg style="width:38px;height:38px;border-radius:50%;flex:0 0 auto"') : face('Amara', 38)) +
             '<div class="grow"><b>' + esc(nm) + '</b><small>' + (t.needs_human ? (t.priority === 'high' ? '🔴 ' : '🟠 ') + esc(t.reason || 'Needs a person') : t.mode === 'human' ? '🟡 Teammate on it' : esc(t.topic || (t.last ? t.last.text : ''))) + '</small><small>' + (t.user ? esc(t.user.plan || '') + ' · ' : '') + esc(SV.ago(t.updated_at)) + '</small></div>' + (t.unread ? '<span class="n">' + t.unread + '</span>' : '') + '</div>';
         }).join('') : '<div class="empty" style="padding:30px 10px">' + SV.scene('spy', 'bino') + '<h3>' + (st.filter === 'needs' ? 'Nobody is waiting' : 'No chats here') + '</h3><p>' + esc(d.agent.name) + ' is handling everything.</p></div>');
       SV.$$('.sup-item', el).forEach(function (it) { it.onclick = function () { st.open = Number(it.dataset.id); history.replaceState({}, '', '/admin/support?t=' + st.open + '&f=' + st.filter); thread(); SV.$$('.sup-item', el).forEach(function (x) { x.classList.toggle('on', x === it); }); }; });
@@ -61,7 +61,7 @@
         if (!document.getElementById('supList')) return;
         head(d); list(d);
         if (st.open) thread(true);
-        else if (window.innerWidth > 900) document.getElementById('supThread').innerHTML = '<div class="empty" style="margin:auto;padding:40px">' + face(d.agent.look, 90) + '<h3 style="margin-top:12px">Pick a chat</h3><p>Read what ' + esc(d.agent.name) + ' said, step in when it needs you.</p></div>';
+        else if (window.innerWidth > 900) document.getElementById('supThread').innerHTML = '<div class="empty" style="margin:auto;padding:40px">' + teamRow(d.agent.team, 64) + '<h3 style="margin-top:12px">Pick a chat</h3><p>Read what Spyvoo Support said, step in when it needs you.</p></div>';
         void keepFocus;
       }).catch(SV.fail);
     }
@@ -117,20 +117,20 @@
         A.sw('ai', 'Use AI', s.ai !== false, 'Off = basic mode: fixed answers, payment checks and hand-offs only.', true) +
         (aiReady === false ? '<p class="sup-noai full">' + I('flag', ' width="15" height="15"') + '<span><b>No AI key set — basic mode is answering.</b> This switch takes effect once you add a key in Ad data &amp; AI.</span></p>' : '') +
         A.sw('public_chat', 'Chat on the website too', s.public_chat !== false, 'Visitors before sign-up can ask about plans and payments (no account access).', true) +
-        A.field('agent_name', 'Agent name', s.agent_name, { hint: 'The name customers see, e.g. Leo.' }) +
-        A.field('agent_role', 'Shown under the chat', s.agent_role, { hint: 'e.g. Spyvoo support' }) +
-        '<div class="field full"><label>Look</label><div class="row-wrap" id="supLooks">' + LOOKS.map(function (l) { return '<label style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="look" value="' + l[0] + '"' + (s.look === l[0] ? ' checked' : '') + ' style="display:none">' + face(l[0], 56).replace('display:inline-block', 'display:inline-block;outline:' + (s.look === l[0] ? '3px solid var(--blue)' : '0') + ';outline-offset:2px') + '<small class="mut" style="font-weight:700">' + esc(l[1]) + '</small></label>'; }).join('') + '</div></div>' +
+        A.field('team', 'Support team names', (s.team || []).join(', '), { full: true, hint: 'Comma separated, up to 8. Each customer always gets the same teammate, who introduces themselves when a chat starts. The chat header says “Spyvoo Support”.' }) +
+        '<div class="field full"><label>Faces</label><div id="supTeam">' + teamRow(s.team, 52) + '</div></div>' +
         A.field('daily_ai_free', 'AI replies per Free customer per day', s.daily_ai_free, { type: 'number', hint: 'After it, basic mode answers that customer until tomorrow.' }) +
         A.field('daily_ai_paid', 'AI replies per paying customer per day', s.daily_ai_paid, { type: 'number' }) +
         A.field('visitor_daily_ai', 'AI replies for website visitors per day (all together)', s.visitor_daily_ai, { type: 'number', hint: 'People who haven’t signed up. Also max 20 a day per visitor.' }) +
         A.field('daily_ai_total', 'AI replies per day, everyone together', s.daily_ai_total, { type: 'number', hint: 'A safety cap on the AI bill. Basic mode answers after it.' }) +
         A.field('extra_knowledge', 'Extra things the agent must know', s.extra_knowledge, { type: 'textarea', full: true, ph: 'e.g. TikTok ads launch in November. Bank transfer in Nigeria is paused this week. Black Friday code BF40 gives 40% off yearly plans until 30 Nov.', hint: 'Plain sentences. The agent reads this before every reply. Plans, prices, offers and payment methods are already read live, no need to repeat them.' }) +
         '</form><div class="actions"><button class="btn ghost" type="button" id="supSC">Cancel</button><button class="btn" type="button" id="supSS">Save</button></div>');
-      SV.$$('#supLooks input', md.el).forEach(function (r) { r.onchange = function () { SV.$$('#supLooks span', md.el).forEach(function (x) { x.style.outline = '0'; }); r.nextElementSibling.style.outline = '3px solid var(--blue)'; }; });
+      var tIn = md.el.querySelector('[name="team"]');
+      if (tIn) tIn.oninput = function () { md.el.querySelector('#supTeam').innerHTML = teamRow(tIn.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 8), 52); };
       md.el.querySelector('#supSC').onclick = function () { md.close(true); };
       md.el.querySelector('#supSS').onclick = function () {
-        var v = A.read(md.el.querySelector('#supSF')); var pick = md.el.querySelector('#supLooks input:checked'); v.look = pick ? pick.value : s.look;
-        A.call('PATCH', '/api/admin/settings/support', { value: v }, this, 'Saved. The agent uses it from the next message.').then(function () { md.close(true); draw(); });
+        var v = A.read(md.el.querySelector('#supSF')); v.team = String(v.team || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+        A.call('PATCH', '/api/admin/settings/support', { value: v }, this, 'Saved. The team uses it from the next message.').then(function () { md.close(true); draw(); });
       };
     }
 

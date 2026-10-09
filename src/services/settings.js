@@ -50,7 +50,7 @@ const DEFAULTS = {
   ],
   // 24/7 support agent (Admin → Support). extra_knowledge: notes the agent must know (new feature, outage, promo...).
   // Daily AI budgets count customer messages answered by AI; past one, the basic agent answers (still 24/7).
-  support: { on: true, ai: true, agent_name: 'Leo', agent_role: 'Spyvoo support', look: 'spy', public_chat: true, visitor_daily_ai: 400, daily_ai_free: 40, daily_ai_paid: 300, daily_ai_total: 6000, extra_knowledge: '' },
+  support: { on: true, ai: true, team: ['Amara', 'Daniel', 'Sofia', 'Kenji', 'Zara', 'Lucas'], agent_role: 'Spyvoo Support', public_chat: true, visitor_daily_ai: 400, daily_ai_free: 40, daily_ai_paid: 300, daily_ai_total: 6000, extra_knowledge: '' },
   billing: { renew_reminder_days: 3, grace_days: 2, pending_expire_days: 7 },
   flags: { maintenance: false, signups: true, public_search: true, public_search_limit: 6 }
 };

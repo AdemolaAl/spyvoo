@@ -79,7 +79,9 @@ was fixed and re-checked.
   - The tour button reads "Tour" on phones.
   - Two different ads in the hero.
   - Winners show on the first screen.
-- **Tour narrator voice (Megan, American, ElevenLabs).** Run `ELEVENLABS_API_KEY=... npm run tour-voice` once and commit `public/audio/tour/*.mp3`. Until then the tour uses the phone's own voice. The tour waits for each line to finish, and has pause and mute.
+- **Tour narrator and music.** The narrator is Liora (warm, soft British accent, ElevenLabs), with a soft music bed underneath that dips while she talks, fades out at the end and has its own on/off button. The audio files are already in `public/audio/tour/` (0–8.mp3 voice, music.mp3 music): nothing to run at deploy. To swap the music, replace `music.mp3`. `npm run tour-voice -- --force` remakes the voice if the script ever changes.
+- **Sharper support, safe refunds.** Support only states facts it actually has. It no longer agrees to made-up claims ("Ebookvoo is part of the Voo family"); it says it can't confirm them and lists the real Voo tools. It never approves, promises or hints at a refund: it collects the details and forwards the request to the billing team (high priority).
+- **Spyvoo Support team (replaces "Leo").** The chat header says **Spyvoo Support**. Behind it is a team with smiling faces: Amara, Daniel, Sofia, Kenji, Zara and Lucas. Each customer always gets the same teammate, who introduces themselves at the start of every conversation ("Hi Tunde 👋 I’m Amara from Spyvoo Support 😊"). Change the names in **Admin → Support → Agent settings**. If a customer sincerely asks whether it's a bot, it still says so honestly and offers a person.
 - **Owner label and premium badge:**
   - Admin accounts show "Owner" instead of "Agency".
   - Paying customers get an **agent ID** badge instead of a crown: an ID clip on the avatar, a "PRO AGENT" pill with clearance bars on desktop, and an animated ID card when the payment confirms. Starter = steel (level 1), Pro = electric blue (level 2), Agency and Owner = black and gold (level 3).

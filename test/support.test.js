@@ -17,7 +17,7 @@ before(async () => {
   settings = require('../src/services/settings'); db = require('../src/db'); support = require('../src/services/support');
 });
 after(async () => { await env.close(); await mock.close(); for (const k of ['AI_PROVIDER', 'OPENROUTER_API_KEY', 'OPENROUTER_BASE_URL', 'AI_RETRY_BASE_MS', 'AI_RETRIES']) delete process.env[k]; });
-beforeEach(() => { mock.reset(); settings.set('support', { on: true, ai: true, public_chat: true, agent_name: 'Leo', extra_knowledge: '' }); });
+beforeEach(() => { mock.reset(); settings.set('support', { on: true, ai: true, public_chat: true, team: ['Amara', 'Daniel', 'Sofia'], extra_knowledge: '' }); });
 
 const say = (c, text) => c.post('/api/support/messages', { text });
 
@@ -47,7 +47,29 @@ test('greets by first name in separate short messages, then stops greeting mid-c
   assert.match(turns[1].content, /Thanks for contacting Spyvoo/);
   const st = await client.get('/api/support');
   assert.equal(st.body.messages.length, 7);
-  assert.equal(st.body.agent.name, 'Leo');
+  assert.ok(['Amara', 'Daniel', 'Sofia'].includes(st.body.agent.name), st.body.agent.name);
+  assert.equal(st.body.agent.assigned, true);
+  // The same customer always gets the same teammate, who is told to introduce themselves by name.
+  const again = await client.get('/api/support');
+  assert.equal(again.body.agent.name, st.body.agent.name);
+});
+
+test('every new conversation starts with the teammate introducing themselves', async () => {
+  const { client } = await h.signup({ name: 'Ife Bello' });
+  mock.text = JSON.stringify({ messages: ['ok'] });
+  await say(client, 'hello');
+  const sys = sysOf(mock.last().body);
+  const st = await client.get('/api/support');
+  assert.match(sys, new RegExp('You are ' + st.body.agent.name + ', part of the Spyvoo Support team'));
+  assert.match(sys, /ALWAYS introduce yourself by name/);
+  assert.match(sys, new RegExp('I’m ' + st.body.agent.name + ' from Spyvoo Support'));
+  // Basic mode (no AI) introduces them too.
+  settings.set('support', { ...settings.get('support'), ai: false });
+  const { client: c2 } = await h.signup({ name: 'Remi Cole' });
+  const r = await say(c2, 'hi');
+  const nm = (await c2.get('/api/support')).body.agent.name;
+  assert.equal(r.body.messages[0].text, 'Hi Remi 👋 I’m ' + nm + ' from Spyvoo Support 😊');
+  assert.equal(r.body.agent.name, nm);
 });
 
 test('a wall of text is split into short bubbles; raw text without JSON still works', async () => {
@@ -162,7 +184,7 @@ test('never silent: AI down → basic agent answers (with name) and hands unknow
   const r = await say(client, 'Something weird is happening with my boards');
   assert.equal(r.status, 200, r.text);
   const texts = r.body.messages.map(m => m.text);
-  assert.equal(texts[0], 'Hi Zainab 👋');
+  assert.match(texts[0], /^Hi Zainab 👋 I’m (Amara|Daniel|Sofia) from Spyvoo Support 😊$/);
   assert.ok(texts.some(t => /passed your message to the team/.test(t)), texts.join(' | '));
   assert.equal(db.one('SELECT needs_human FROM support_threads WHERE user_id = ?', user.id).needs_human, 1);
 });
@@ -207,11 +229,10 @@ test('website visitors: cookie chat, pre-sales answers, can be switched off; inp
 
 test('admin settings are cleaned before saving', async () => {
   const adm = await h.admin();
-  const r = await adm.req('PATCH', '/api/admin/settings/support', { value: { agent_name: 'Leo<script>alert(1)</script>', look: 'evil', visitor_daily_ai: -5, extra_knowledge: 'TikTok ads launch in November.' } });
+  const r = await adm.req('PATCH', '/api/admin/settings/support', { value: { team: ['Amara<script>alert(1)</script>', '', 'Kenji', 'Kenji'], visitor_daily_ai: -5, extra_knowledge: 'TikTok ads launch in November.' } });
   assert.equal(r.status, 200, r.text);
   const s = settings.get('support');
-  assert.equal(s.agent_name, 'Leoscriptalert1script');
-  assert.equal(s.look, 'spy');
+  assert.deepEqual(s.team, ['Amarascriptalert1scr', 'Kenji']);
   assert.equal(s.visitor_daily_ai, 0);
   const { client } = await h.signup({ name: 'Know Ledge' });
   mock.text = JSON.stringify({ messages: ['ok'] });
@@ -248,7 +269,7 @@ test('honest about being an AI; AI budgets fall back to the basic agent; visitor
   settings.set('support', { ai: false });
   const { client, user } = await h.signup({ name: 'Bot Asker' });
   const r = await say(client, 'are you a bot?');
-  assert.ok(r.body.messages.some(m => /AI support agent/.test(m.text)), JSON.stringify(r.body.messages));
+  assert.ok(r.body.messages.some(m => /AI support (agent|assistant)/.test(m.text)), JSON.stringify(r.body.messages));
   const v = await say(h.client(), 'I need help with my order please');
   assert.ok(v.body.messages.some(m => /Log in/.test(m.text)));
   assert.equal(db.one('SELECT COUNT(*) n FROM support_threads WHERE user_id IS NULL AND needs_human = 1').n, 0, 'no team alert for visitors in basic mode');
@@ -307,4 +328,29 @@ test('basic agent answers its own suggested questions correctly (crypto, free pl
   assert.ok(q.body.messages.some(m => /USDT on TRON/.test(m.text)));
   assert.ok(!q.body.messages.some(m => /SV-ABANDON-1/.test(m.text)), 'a general question never reports an old abandoned checkout');
   settings.set('support', { ai: true });
+});
+
+test('the agent never agrees to made-up facts and never promises a refund', async () => {
+  // AI mode: the rules are in the prompt.
+  const { client } = await h.signup({ name: 'Claim Tester' });
+  mock.text = JSON.stringify({ messages: ['ok'] });
+  await say(client, 'Ebookvoo is your company right?');
+  const sys = sysOf(mock.last().body);
+  assert.match(sys, /Never agree with a claim just because they said it/);
+  assert.match(sys, /NEVER approve, promise or imply a refund/);
+  assert.match(sys, /That is the COMPLETE list/);
+  assert.doesNotMatch(sys, /tell them honestly whether it looks eligible/);
+  // Basic mode answers the same way.
+  settings.set('support', { ...settings.get('support'), ai: false });
+  const { client: c2 } = await h.signup({ name: 'Basic Tester' });
+  const v = await say(c2, 'ebookvoo is part of the voo family abi?');
+  const vt = v.body.messages.map(m => m.text).join(' | ');
+  assert.match(vt, /Not that I know of/);
+  assert.doesNotMatch(vt, /\b(yes|yeah)\b/i);
+  const g = await say(c2, 'is gatevoo yours?');
+  assert.doesNotMatch(g.body.messages.map(m => m.text).join(' '), /Not that I know of/);
+  const r = await say(c2, 'I want my money back, refund me');
+  const rt = r.body.messages.map(m => m.text).join(' | ');
+  assert.match(rt, /forwarded your refund request to our billing team/);
+  assert.doesNotMatch(rt, /eligible|can be refunded|will be refunded|you.ll get|qualif/i);
 });
